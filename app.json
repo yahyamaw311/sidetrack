@@ -7,6 +7,14 @@
     "userInterfaceStyle": "light",
     "assetBundlePatterns": [
       "**/*"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "7833787b-ab96-4d8d-a1e1-2bb607061d9a"
+      }
+    },
+    "android": {
+      "package": "com.yahyamaw311.sidetrack"
+    }
   }
 }
