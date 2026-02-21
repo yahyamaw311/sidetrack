@@ -1,0 +1,33 @@
+Bugs to Fix
+Movie favorites aren't persisted — the heart button in MovieDetail only toggles local state, never saves to storage. There's no toggleFavoriteMovie in StorageProvider at all.
+Logging the same movie twice silently overwrites — storage keys by movieId, so a rewatch replaces the original entry (date + rating lost).
+Tapping a person in search results crashes — TMDB multi-search returns people, but the app tries to open them as a TV show.
+MovieDetail shows infinite loading on API failure — if the network call fails, movie stays null and you're stuck on the loading screen.
+getRatingColor thresholds differ across screens — a 6.5-rated show appears "good" on Discovery but "mid" on details.
+
+
+UX Improvements
+No search debouncing — every keystroke fires an API call (flickering results, wasted requests).
+No pull-to-refresh on any list screen (Discovery, Saved, History).
+Watched episodes are invisible — the app stores them but never displays them. History only shows movies.
+No delete confirmation on Saved tab — WatchlistScreen deletes immediately, HistoryScreen asks first.
+Long-press to delete in History isn't discoverable — no visual hint.
+No way to un-mark an episode as watched once logged.
+Discovery only shows trending TV shows — no trending movies until you search.
+Performance
+Mass parallel IMDb API calls — expanding a 20-episode season fires 40+ simultaneous HTTP requests. Needs concurrency limiting.
+No API response caching — navigating to a detail, going back, and tapping again makes fresh requests every time.
+FlatList inside ScrollView on DiscoveryScreen disables virtualization (React Native warning).
+EpisodeDetail is 1200+ lines — a single component with 15+ useState calls; should be split up.
+Error Handling
+No error boundaries — any unhandled exception white-screens the app.
+No offline detection — all screens silently show empty content when there's no internet.
+No API timeout — a stalled request hangs forever.
+Want me to start implementing any of these? I'd suggest tackling them in this order:
+
+Persist movie favorites + add StorageProvider method
+Add search debouncing
+Filter out "person" results from search
+Show watched episodes in History tab
+Add pull-to-refresh to list screens
+Add concurrency limiting to IMDb batch fetches
