@@ -1,7 +1,10 @@
 import axios from 'axios';
+import Constants from 'expo-constants';
 import { TMDBResponse, SearchResult, TVShowDetail, SeasonDetail, MovieDetail, EpisodeDetailData } from '../types';
 
-const TMDB_API_KEY = process.env.EXPO_PUBLIC_TMDB_API_KEY || ''; 
+const TMDB_API_KEY = Constants.expoConfig?.extra?.tmdbApiKey
+  || process.env.EXPO_PUBLIC_TMDB_API_KEY
+  || ''; 
 const BASE_URL = 'https://api.themoviedb.org/3';
 const IMDB_GRAPHQL_URL = 'https://graphql.imdb.com';
 

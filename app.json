@@ -4,17 +4,29 @@
     "slug": "sidetrack",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/logo.png",
     "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#07070B"
+    },
     "assetBundlePatterns": [
       "**/*"
     ],
     "extra": {
       "eas": {
         "projectId": "7833787b-ab96-4d8d-a1e1-2bb607061d9a"
-      }
+      },
+      "tmdbApiKey": "602bfe1cf36c39a33dd747b1cd8495d4",
+      "omdbApiKey": "986d085"
     },
     "android": {
-      "package": "com.yahyamaw311.sidetrack"
+      "package": "com.yahyamaw311.sidetrack",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo.png",
+        "backgroundColor": "#07070B"
+      }
     }
   }
 }
