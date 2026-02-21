@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
@@ -8,15 +8,13 @@ import { MovieDetail } from '../screens/MovieDetail';
 import { DiscoveryScreen } from '../screens/DiscoveryScreen';
 import { WatchlistScreen } from '../screens/WatchlistScreen';
 import { HistoryScreen } from '../screens/HistoryScreen';
-import { AddWatchedScreen } from '../screens/AddWatchedScreen';
 import { SearchResult } from '../types';
 
-type TabRoute = 'Explore' | 'Saved' | 'Log';
+type TabRoute = 'Explore' | 'Watchlist' | 'Log';
 
 export const MainNavigation = () => {
   const [activeTab, setActiveTab] = useState<TabRoute>('Explore');
   const [selectedShow, setSelectedShow] = useState<SearchResult | null>(null);
-  const [addWatchedVisible, setAddWatchedVisible] = useState(false);
   const [historyKey, setHistoryKey] = useState(0);
 
   const handleTabChange = (tab: TabRoute) => {
@@ -74,11 +72,6 @@ export const MainNavigation = () => {
     setSelectedShow(null);
   };
 
-  const handleAddWatchedClose = () => {
-    setAddWatchedVisible(false);
-    setHistoryKey(prev => prev + 1);
-  };
-
   const renderContent = () => {
     switch (activeTab) {
       case 'Explore':
@@ -89,7 +82,7 @@ export const MainNavigation = () => {
           return <EpisodeDetail route={{ params: { tvId: selectedShow.id, seasonNumber: 1, episodeNumber: 1 } }} onBack={handleBack} />;
         }
         return <DiscoveryScreen onSelectShow={handleSelectShow} />; 
-      case 'Saved':
+      case 'Watchlist':
         return <WatchlistScreen onSelectShow={handleSelectFromWatchlist} />;
       case 'Log':
         return <HistoryScreen key={historyKey} onSelectMovie={handleSelectFromHistory} onSelectShow={handleSelectShowFromHistory} />;
@@ -111,22 +104,12 @@ export const MainNavigation = () => {
           />
           
           <TabButton 
-            icon="heart-outline" 
-            activeIcon="heart" 
-            label="Saved" 
-            isActive={activeTab === 'Saved'} 
-            onPress={() => handleTabChange('Saved')} 
+            icon="bookmark-outline" 
+            activeIcon="bookmark" 
+            label="Watchlist" 
+            isActive={activeTab === 'Watchlist'} 
+            onPress={() => handleTabChange('Watchlist')} 
           />
-
-          <TouchableOpacity 
-            style={styles.addButton}
-            onPress={() => setAddWatchedVisible(true)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.addButtonInner}>
-              <Ionicons name="add" size={22} color={COLORS.text.inverse} />
-            </View>
-          </TouchableOpacity>
 
           <TabButton 
             icon="journal-outline" 
@@ -137,15 +120,6 @@ export const MainNavigation = () => {
           />
         </View>
       </BlurView>
-
-      <Modal
-        visible={addWatchedVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={handleAddWatchedClose}
-      >
-        <AddWatchedScreen onClose={handleAddWatchedClose} />
-      </Modal>
     </View>
   );
 };
@@ -201,18 +175,5 @@ const styles = StyleSheet.create({
   },
   tabLabelActive: {
     color: COLORS.primary,
-  },
-  addButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 6,
-  },
-  addButtonInner: {
-    width: 42,
-    height: 42,
-    borderRadius: BORDER_RADIUS.round,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
 });

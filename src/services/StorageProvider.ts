@@ -104,10 +104,19 @@ export const StorageProvider = {
 
   addToWatchedMovies: async (movie: WatchedMovie) => {
     const watched = await getData<Record<string, WatchedMovie>>(STORAGE_KEYS.WATCHED_MOVIES, {});
-    // Use a unique key (movieId + timestamp) to support multiple rewatches
-    const key = `${movie.movieId}_${Date.now()}`;
+    // Use movieId as key — only one entry per movie (no duplicate logs)
+    const key = String(movie.movieId);
     watched[key] = movie;
     await setData(STORAGE_KEYS.WATCHED_MOVIES, watched);
+  },
+
+  updateWatchedMovieRating: async (movieId: number, newRating: number) => {
+    const watched = await getData<Record<string, WatchedMovie>>(STORAGE_KEYS.WATCHED_MOVIES, {});
+    const key = Object.keys(watched).find(k => watched[k].movieId === movieId);
+    if (key) {
+      watched[key].rating = newRating;
+      await setData(STORAGE_KEYS.WATCHED_MOVIES, watched);
+    }
   },
 
   removeFromWatchedMovies: async (movieId: number, watchedDate?: string) => {

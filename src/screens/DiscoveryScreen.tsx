@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { 
   View, Text, StyleSheet, FlatList, Image, TextInput, 
-  TouchableOpacity, ActivityIndicator, SafeAreaView, 
-  Platform, ScrollView 
+  TouchableOpacity, ActivityIndicator, 
+  Platform, ScrollView, Animated 
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, LAYOUT, BORDER_RADIUS } from '../constants/theme';
@@ -15,6 +16,136 @@ const POSTER_WIDTH = (LAYOUT.window.width - SPACING.m * 2 - SPACING.s * 2) / 3;
 
 import { getRatingColor } from '../constants/theme';
 
+// --- Skeleton Components ---
+const SkeletonBox = ({ style }: { style: any }) => {
+  const opacity = useRef(new Animated.Value(0.3)).current;
+
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 0.7, duration: 800, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.3, duration: 800, useNativeDriver: true }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [opacity]);
+
+  return <Animated.View style={[{ backgroundColor: COLORS.card, opacity }, style]} />;
+};
+
+const SpotlightSkeleton = () => (
+  <View style={skeletonStyles.spotlightRow}>
+    {[0, 1].map(i => (
+      <View key={i} style={skeletonStyles.spotlightCard}>
+        <SkeletonBox style={skeletonStyles.spotlightImage} />
+        <View style={skeletonStyles.spotlightTextArea}>
+          <SkeletonBox style={skeletonStyles.titleBar} />
+          <SkeletonBox style={skeletonStyles.ratingBar} />
+        </View>
+      </View>
+    ))}
+  </View>
+);
+
+const PosterSkeleton = () => (
+  <View style={skeletonStyles.posterRow}>
+    {[0, 1, 2].map(i => (
+      <View key={i} style={skeletonStyles.posterCard}>
+        <SkeletonBox style={skeletonStyles.posterImage} />
+        <SkeletonBox style={skeletonStyles.posterTitleBar} />
+      </View>
+    ))}
+  </View>
+);
+
+const SearchResultSkeleton = () => (
+  <View>
+    {[0, 1, 2, 3, 4].map(i => (
+      <View key={i} style={skeletonStyles.searchRow}>
+        <SkeletonBox style={skeletonStyles.searchPoster} />
+        <View style={skeletonStyles.searchTextArea}>
+          <SkeletonBox style={skeletonStyles.searchTitleBar} />
+          <SkeletonBox style={skeletonStyles.searchMetaBar} />
+          <SkeletonBox style={skeletonStyles.searchRatingBar} />
+        </View>
+      </View>
+    ))}
+  </View>
+);
+
+const PopcornLoader = () => {
+  const bounce1 = useRef(new Animated.Value(0)).current;
+  const bounce2 = useRef(new Animated.Value(0)).current;
+  const bounce3 = useRef(new Animated.Value(0)).current;
+  const spin = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const createBounce = (anim: Animated.Value, delay: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(anim, { toValue: -12, duration: 300, useNativeDriver: true }),
+          Animated.timing(anim, { toValue: 0, duration: 300, useNativeDriver: true }),
+        ])
+      );
+    const spinAnim = Animated.loop(
+      Animated.timing(spin, { toValue: 1, duration: 2000, useNativeDriver: true })
+    );
+    createBounce(bounce1, 0).start();
+    createBounce(bounce2, 150).start();
+    createBounce(bounce3, 300).start();
+    spinAnim.start();
+    return () => {
+      bounce1.stopAnimation();
+      bounce2.stopAnimation();
+      bounce3.stopAnimation();
+      spin.stopAnimation();
+    };
+  }, [bounce1, bounce2, bounce3, spin]);
+
+  const rotation = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+
+  return (
+    <View style={popcornStyles.container}>
+      <View style={popcornStyles.kernelRow}>
+        <Animated.Text style={[popcornStyles.kernel, { transform: [{ translateY: bounce1 }] }]}>
+          🍿
+        </Animated.Text>
+        <Animated.Text style={[popcornStyles.kernel, { transform: [{ translateY: bounce2 }] }]}>
+          🎬
+        </Animated.Text>
+        <Animated.Text style={[popcornStyles.kernel, { transform: [{ translateY: bounce3 }] }]}>
+          🍿
+        </Animated.Text>
+      </View>
+      <Animated.View style={{ transform: [{ rotate: rotation }] }}>
+        <Ionicons name="film-outline" size={20} color={COLORS.primary} />
+      </Animated.View>
+      <Text style={popcornStyles.text}>Finding your next watch...</Text>
+    </View>
+  );
+};
+
+const DiscoverySkeleton = () => (
+  <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+    <View style={styles.section}>
+      <View style={styles.sectionHeader}>
+        <SkeletonBox style={{ width: 6, height: 6, borderRadius: 3 }} />
+        <SkeletonBox style={{ width: 80, height: 14, borderRadius: BORDER_RADIUS.xs }} />
+      </View>
+      <SpotlightSkeleton />
+    </View>
+    <View style={styles.section}>
+      <View style={styles.sectionHeader}>
+        <SkeletonBox style={{ width: 6, height: 6, borderRadius: 3 }} />
+        <SkeletonBox style={{ width: 60, height: 14, borderRadius: BORDER_RADIUS.xs }} />
+      </View>
+      <PosterSkeleton />
+    </View>
+  </ScrollView>
+);
+
 interface DiscoveryScreenProps {
   onSelectShow: (show: SearchResult) => void;
 }
@@ -25,9 +156,14 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow }
   const [trending, setTrending] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchActive, setSearchActive] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     loadTrending();
+    return () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    };
   }, []);
 
   const loadTrending = async () => {
@@ -37,22 +173,38 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow }
     setLoading(false);
   };
 
-  const handleSearch = async (text: string) => {
-    setQuery(text);
+  const performSearch = useCallback(async (text: string) => {
     if (text.length > 2) {
       setLoading(true);
       const searchResults = await tmdbService.search(text);
       // Filter out 'person' results — only show movies and TV shows
       setResults(searchResults.filter((item: any) => item.media_type === 'movie' || item.media_type === 'tv'));
       setLoading(false);
+      setSearching(false);
     } else if (text.length === 0) {
       setResults([]);
+      setSearching(false);
     }
+  }, []);
+
+  const handleSearch = (text: string) => {
+    setQuery(text);
+    if (text.length > 2) {
+      setSearching(true);
+    } else {
+      setSearching(false);
+    }
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => {
+      performSearch(text);
+    }, 500);
   };
 
   const clearSearch = () => {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
     setQuery('');
     setResults([]);
+    setSearching(false);
     setSearchActive(false);
   };
 
@@ -130,9 +282,15 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow }
   if (loading && trending.length === 0) {
     return (
       <View style={styles.container}>
-        <View style={styles.centered}>
-          <ActivityIndicator color={COLORS.primary} size="large" />
-        </View>
+        <SafeAreaView style={styles.safeArea}>
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>Explore</Text>
+            <View style={styles.searchToggle}>
+              <Ionicons name="search" size={20} color={COLORS.text.primary} />
+            </View>
+          </View>
+          <DiscoverySkeleton />
+        </SafeAreaView>
       </View>
     );
   }
@@ -144,7 +302,13 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow }
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Explore</Text>
           <TouchableOpacity 
-            onPress={() => setSearchActive(!searchActive)}
+            onPress={() => {
+              if (searchActive) {
+                clearSearch();
+              } else {
+                setSearchActive(true);
+              }
+            }}
             style={styles.searchToggle}
           >
             <Ionicons name={searchActive ? "close" : "search"} size={20} color={COLORS.text.primary} />
@@ -164,8 +328,8 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow }
               autoFocus
             />
             {query.length > 0 && (
-              <TouchableOpacity onPress={clearSearch}>
-                <Ionicons name="close-circle" size={18} color={COLORS.text.muted} />
+              <TouchableOpacity onPress={clearSearch} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={styles.clearButton}>
+                <Ionicons name="close-circle" size={20} color={COLORS.text.secondary} />
               </TouchableOpacity>
             )}
           </View>
@@ -180,10 +344,8 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow }
             contentContainerStyle={styles.searchList}
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
-              loading ? (
-                <View style={styles.centered}>
-                  <ActivityIndicator color={COLORS.primary} size="large" />
-                </View>
+              loading || searching ? (
+                <PopcornLoader />
               ) : (
                 <View style={styles.centered}>
                   <Ionicons name="film-outline" size={40} color={COLORS.text.muted} />
@@ -290,6 +452,11 @@ const styles = StyleSheet.create({
     color: COLORS.text.primary,
     fontFamily: FONTS.body,
     fontSize: 15,
+  },
+  clearButton: {
+    padding: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   searchList: {
     paddingHorizontal: SPACING.m,
@@ -433,5 +600,115 @@ const styles = StyleSheet.create({
     color: COLORS.text.secondary,
     fontFamily: FONTS.bodyMedium,
     fontSize: 12,
+  },
+});
+
+const skeletonStyles = StyleSheet.create({
+  spotlightRow: {
+    flexDirection: 'row',
+    paddingLeft: SPACING.m,
+    gap: SPACING.s,
+  },
+  spotlightCard: {
+    width: SPOTLIGHT_WIDTH,
+    height: SPOTLIGHT_WIDTH * 0.56,
+    borderRadius: BORDER_RADIUS.l,
+    overflow: 'hidden',
+  },
+  spotlightImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: BORDER_RADIUS.l,
+  },
+  spotlightTextArea: {
+    position: 'absolute',
+    bottom: SPACING.m,
+    left: SPACING.m,
+    right: SPACING.m,
+    gap: SPACING.xs,
+  },
+  titleBar: {
+    width: '60%',
+    height: 16,
+    borderRadius: BORDER_RADIUS.xs,
+  },
+  ratingBar: {
+    width: 40,
+    height: 12,
+    borderRadius: BORDER_RADIUS.xs,
+  },
+  posterRow: {
+    flexDirection: 'row',
+    paddingLeft: SPACING.m,
+    gap: SPACING.s,
+  },
+  posterCard: {
+    width: POSTER_WIDTH,
+    gap: SPACING.xs,
+  },
+  posterImage: {
+    width: POSTER_WIDTH,
+    aspectRatio: 2 / 3,
+    borderRadius: BORDER_RADIUS.s,
+  },
+  posterTitleBar: {
+    width: '70%',
+    height: 12,
+    borderRadius: BORDER_RADIUS.xs,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    paddingVertical: SPACING.m,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+    gap: SPACING.m,
+  },
+  searchPoster: {
+    width: 56,
+    height: 84,
+    borderRadius: BORDER_RADIUS.xs,
+  },
+  searchTextArea: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: SPACING.s,
+  },
+  searchTitleBar: {
+    width: '65%',
+    height: 15,
+    borderRadius: BORDER_RADIUS.xs,
+  },
+  searchMetaBar: {
+    width: '40%',
+    height: 13,
+    borderRadius: BORDER_RADIUS.xs,
+  },
+  searchRatingBar: {
+    width: 30,
+    height: 12,
+    borderRadius: BORDER_RADIUS.xs,
+  },
+});
+
+const popcornStyles = StyleSheet.create({
+  container: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.xxl * 1.5,
+    gap: SPACING.m,
+  },
+  kernelRow: {
+    flexDirection: 'row',
+    gap: SPACING.m,
+    marginBottom: SPACING.s,
+  },
+  kernel: {
+    fontSize: 32,
+  },
+  text: {
+    color: COLORS.text.secondary,
+    fontFamily: FONTS.bodyMedium,
+    fontSize: 14,
+    marginTop: SPACING.xs,
   },
 });

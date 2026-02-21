@@ -1,39 +1,36 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { 
   View, 
   Text, 
   StyleSheet, 
   FlatList, 
-  SectionList,
   Image, 
   TouchableOpacity, 
-  SafeAreaView,
   Platform,
   Alert,
-  ScrollView,
-  Dimensions,
-  NativeSyntheticEvent,
-  NativeScrollEvent,
   TextInput,
   LayoutAnimation,
-  UIManager,
 } from 'react-native';
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, getRatingColor } from '../constants/theme';
 import { tmdbService } from '../services/tmdbService';
 import { StorageProvider } from '../services/StorageProvider';
-import { WatchedMovie, WatchedEpisode } from '../types';
+import { WatchedMovie, WatchedEpisode, FavoriteMovie } from '../types';
 
-type HistoryTab = 'movies' | 'tvshows';
+type TVDrillLevel = 'shows' | 'episodes';
 
-interface ShowSection {
+type UnifiedItem =
+  | { type: 'movie'; data: WatchedMovie; sortDate: string }
+  | { type: 'show'; data: ShowGroup; sortDate: string };
+
+interface ShowGroup {
   seriesId: number;
   seriesName: string;
-  data: WatchedEpisode[];
+  posterPath?: string | null;
+  episodes: WatchedEpisode[];
+  seasons: number[];
+  latestDate: string;
 }
 
 interface HistoryScreenProps {
@@ -42,23 +39,32 @@ interface HistoryScreenProps {
 }
 
 export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onSelectShow }) => {
-  const [activeTab, setActiveTab] = useState<HistoryTab>('movies');
   const [movies, setMovies] = useState<WatchedMovie[]>([]);
   const [episodes, setEpisodes] = useState<WatchedEpisode[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Favorites filter state
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [favoriteMovieIds, setFavoriteMovieIds] = useState<Set<number>>(new Set());
+  const [favoriteEpisodeIds, setFavoriteEpisodeIds] = useState<Set<number>>(new Set());
+
+  // TV drill-down state
+  const [tvLevel, setTvLevel] = useState<TVDrillLevel>('shows');
   const [selectedShowId, setSelectedShowId] = useState<number | null>(null);
-  const pagerRef = useRef<ScrollView>(null);
-  const screenWidth = Dimensions.get('window').width;
 
   const loadHistory = useCallback(async () => {
     setLoading(true);
-    const [movieData, episodeData] = await Promise.all([
+    const [movieData, episodeData, favMovies, favEpisodeIdList] = await Promise.all([
       StorageProvider.getWatchedMovies(),
       StorageProvider.getAllWatchedEpisodes(),
+      StorageProvider.getAllFavoriteMovies(),
+      StorageProvider.getAllFavorites(),
     ]);
     setMovies(movieData);
     setEpisodes(episodeData);
+    setFavoriteMovieIds(new Set(favMovies.map(m => m.movieId)));
+    setFavoriteEpisodeIds(new Set(favEpisodeIdList));
     setLoading(false);
   }, []);
 
@@ -104,10 +110,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
 
   const formatDate = (isoDate: string) => {
     const date = new Date(isoDate);
-    return date.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric',
-    });
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
   const renderHalfStars = (rating: number) => {
@@ -124,26 +127,96 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
     return stars;
   };
 
-  const renderMovieItem = ({ item, index }: { item: WatchedMovie; index: number }) => (
+  const totalCount = movies.length + episodes.length;
+  const query = searchQuery.trim().toLowerCase();
+
+  // ── Group episodes by show ──
+  const showGroups: ShowGroup[] = useMemo(() => {
+    const grouped: Record<number, ShowGroup> = {};
+    const episodesToGroup = showFavoritesOnly
+      ? episodes.filter(ep => favoriteEpisodeIds.has(ep.episodeId))
+      : episodes;
+    for (const ep of episodesToGroup) {
+      if (!grouped[ep.seriesId]) {
+        grouped[ep.seriesId] = {
+          seriesId: ep.seriesId,
+          seriesName: ep.seriesName || 'Unknown show',
+          posterPath: ep.stillPath,
+          episodes: [],
+          seasons: [],
+          latestDate: ep.watchedDate,
+        };
+      }
+      grouped[ep.seriesId].episodes.push(ep);
+      if (!grouped[ep.seriesId].seasons.includes(ep.seasonNumber)) {
+        grouped[ep.seriesId].seasons.push(ep.seasonNumber);
+      }
+      if (new Date(ep.watchedDate) > new Date(grouped[ep.seriesId].latestDate)) {
+        grouped[ep.seriesId].latestDate = ep.watchedDate;
+      }
+    }
+    return Object.values(grouped)
+      .map(g => ({ ...g, seasons: g.seasons.sort((a, b) => a - b) }));
+  }, [episodes, showFavoritesOnly, favoriteEpisodeIds]);
+
+  // ── Unified list: movies + show groups, sorted by most recent date ──
+  const unifiedItems: UnifiedItem[] = useMemo(() => {
+    const items: UnifiedItem[] = [];
+    for (const m of movies) {
+      if (query && !m.title.toLowerCase().includes(query)) continue;
+      if (showFavoritesOnly && !favoriteMovieIds.has(m.movieId)) continue;
+      items.push({ type: 'movie', data: m, sortDate: m.watchedDate });
+    }
+    for (const g of showGroups) {
+      if (query && !g.seriesName.toLowerCase().includes(query)) continue;
+      items.push({ type: 'show', data: g, sortDate: g.latestDate });
+    }
+    return items.sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime());
+  }, [movies, showGroups, query, showFavoritesOnly, favoriteMovieIds]);
+
+  // ── Selected show / season data for drill-down ──
+  const selectedShow = useMemo(() => {
+    if (selectedShowId === null) return null;
+    return showGroups.find(s => s.seriesId === selectedShowId) ?? null;
+  }, [showGroups, selectedShowId]);
+
+  // All episodes for the selected show, most recently watched first
+  const selectedShowEpisodes = useMemo(() => {
+    if (!selectedShow) return [];
+    return [...selectedShow.episodes].sort((a, b) =>
+      new Date(b.watchedDate).getTime() - new Date(a.watchedDate).getTime()
+    );
+  }, [selectedShow]);
+
+  // ── Navigation helpers ──
+  const drillIntoShow = (seriesId: number) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setSelectedShowId(seriesId);
+    setTvLevel('episodes');
+  };
+
+  const drillBack = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setSelectedShowId(null);
+    setTvLevel('shows');
+  };
+
+  // ── Render: unified movie row ──
+  const renderMovieRow = (item: WatchedMovie, index: number) => (
     <TouchableOpacity 
       style={styles.row}
       onPress={() => onSelectMovie?.(item.movieId)}
       onLongPress={() => handleRemoveMovie(item.movieId, item.title, item.watchedDate)}
       activeOpacity={0.7}
     >
-      {/* Timeline indicator */}
       <View style={styles.timeline}>
         <View style={[styles.timelineDot, { backgroundColor: getRatingColor(item.rating) }]} />
-        {index < movies.length - 1 && <View style={styles.timelineLine} />}
+        {index < unifiedItems.length - 1 && <View style={styles.timelineLine} />}
       </View>
-
-      {/* Poster */}
       <Image 
         source={{ uri: tmdbService.getImageUrl(item.posterPath) }}
         style={styles.poster}
       />
-      
-      {/* Info */}
       <View style={styles.info}>
         <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
         <Text style={styles.meta}>
@@ -158,9 +231,10 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
           <Text style={styles.dateText}>{formatDate(item.watchedDate)}</Text>
         </View>
       </View>
-
-      {/* Rating */}
       <View style={styles.ratingCol}>
+        {favoriteMovieIds.has(item.movieId) && (
+          <Ionicons name="star" size={12} color={COLORS.primary} style={{ marginBottom: 2 }} />
+        )}
         <Text style={[styles.ratingValue, { color: getRatingColor(item.rating) }]}>
           {item.rating}
         </Text>
@@ -169,76 +243,143 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
     </TouchableOpacity>
   );
 
-  const totalCount = movies.length + episodes.length;
+  // ── Render: unified show card ──
+  const renderShowCard = (item: ShowGroup, index: number) => {
+    const ratedEps = item.episodes.filter(ep => ep.rating > 0);
+    const avgRating = ratedEps.length > 0
+      ? ratedEps.reduce((sum, ep) => sum + ep.rating, 0) / ratedEps.length
+      : 0;
+    const totalEps = item.episodes.length;
+    const totalSeasons = item.seasons.length;
 
-  // Filter by search query
-  const query = searchQuery.trim().toLowerCase();
-  const filteredMovies = React.useMemo(() => {
-    if (!query) return movies;
-    return movies.filter(m => m.title.toLowerCase().includes(query));
-  }, [movies, query]);
+    return (
+      <TouchableOpacity
+        style={tvStyles.showCard}
+        onPress={() => drillIntoShow(item.seriesId)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.timeline}>
+          <View style={[styles.timelineDot, { backgroundColor: avgRating > 0 ? COLORS.primary : COLORS.text.muted }]} />
+          {index < unifiedItems.length - 1 && <View style={styles.timelineLine} />}
+        </View>
 
-  // Group episodes by TV show
-  const showSections: ShowSection[] = React.useMemo(() => {
-    const grouped: Record<number, ShowSection> = {};
-    for (const ep of episodes) {
-      if (!grouped[ep.seriesId]) {
-        grouped[ep.seriesId] = {
-          seriesId: ep.seriesId,
-          seriesName: ep.seriesName || 'Unknown show',
-          data: [],
-        };
-      }
-      grouped[ep.seriesId].data.push(ep);
-    }
-    // Sort sections by most recent episode watched
-    return Object.values(grouped).sort((a, b) => {
-      const aLatest = new Date(a.data[0].watchedDate).getTime();
-      const bLatest = new Date(b.data[0].watchedDate).getTime();
-      return bLatest - aLatest;
-    });
-  }, [episodes]);
+        {item.episodes[0]?.stillPath ? (
+          <Image
+            source={{ uri: tmdbService.getImageUrl(item.episodes[0].stillPath, 'w300') }}
+            style={tvStyles.showPoster}
+          />
+        ) : (
+          <View style={[tvStyles.showPoster, tvStyles.posterPlaceholder]}>
+            <Ionicons name="tv-outline" size={20} color={COLORS.text.muted} />
+          </View>
+        )}
 
-  const filteredSections = React.useMemo(() => {
-    if (!query) return showSections;
-    return showSections
-      .map(section => ({
-        ...section,
-        data: section.data.filter(ep =>
-          (ep.episodeName || '').toLowerCase().includes(query) ||
-          section.seriesName.toLowerCase().includes(query)
-        ),
-      }))
-      .filter(section => section.data.length > 0);
-  }, [showSections, query]);
+        <View style={tvStyles.showInfo}>
+          <Text style={tvStyles.showName} numberOfLines={1}>{item.seriesName}</Text>
+          <Text style={tvStyles.showMeta}>
+            {totalSeasons} season{totalSeasons !== 1 ? 's' : ''} · {totalEps} ep{totalEps !== 1 ? 's' : ''}
+          </Text>
+          <View style={tvStyles.showBottomRow}>
+            {avgRating > 0 && (
+              <View style={tvStyles.avgRatingWrap}>
+                <Ionicons name="star" size={11} color={COLORS.primary} />
+                <Text style={tvStyles.avgRatingText}>{avgRating.toFixed(1)}</Text>
+              </View>
+            )}
+            <Text style={tvStyles.showDate}>{formatDate(item.latestDate)}</Text>
+          </View>
+        </View>
 
-  // Drill-down: selected show's episodes
-  const selectedSection = React.useMemo(() => {
-    if (selectedShowId === null) return null;
-    return showSections.find(s => s.seriesId === selectedShowId) ?? null;
-  }, [showSections, selectedShowId]);
-
-  const drillIntoShow = (seriesId: number) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setSelectedShowId(seriesId);
+        <Ionicons name="chevron-forward" size={16} color={COLORS.text.muted} />
+      </TouchableOpacity>
+    );
   };
 
-  const drillBack = () => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setSelectedShowId(null);
+  // ── Render: unified item ──
+  const renderUnifiedItem = ({ item, index }: { item: UnifiedItem; index: number }) => {
+    if (item.type === 'movie') return renderMovieRow(item.data, index);
+    return renderShowCard(item.data, index);
   };
 
-  const switchTab = (tab: HistoryTab) => {
-    setActiveTab(tab);
-    pagerRef.current?.scrollTo({ x: tab === 'movies' ? 0 : screenWidth, animated: true });
+  // ── Render: Episode rows ──
+  const renderEpisodeRow = ({ item }: { item: WatchedEpisode }) => {
+    const starRating = item.rating || 0;
+    return (
+      <TouchableOpacity
+        style={tvStyles.episodeRow}
+        onLongPress={() => handleRemoveEpisode(item.episodeId, item.episodeName || 'this episode')}
+        activeOpacity={0.7}
+      >
+        <View style={tvStyles.epNumberWrap}>
+          <Text style={tvStyles.epNumber}>{item.episodeNumber}</Text>
+        </View>
+
+        {item.stillPath ? (
+          <Image
+            source={{ uri: tmdbService.getImageUrl(item.stillPath, 'w300') }}
+            style={tvStyles.epStill}
+          />
+        ) : (
+          <View style={[tvStyles.epStill, tvStyles.epStillPlaceholder]}>
+            <Ionicons name="image-outline" size={16} color={COLORS.text.muted} />
+          </View>
+        )}
+
+        <View style={tvStyles.epInfo}>
+          <Text style={tvStyles.epTitle} numberOfLines={1}>
+            S{item.seasonNumber}E{item.episodeNumber} · {item.episodeName || `Episode ${item.episodeNumber}`}
+          </Text>
+          <View style={tvStyles.epMetaRow}>
+            {starRating > 0 ? (
+              <View style={tvStyles.starsRow}>
+                {renderHalfStars(starRating)}
+              </View>
+            ) : (
+              <Text style={tvStyles.epMetaText}>Not rated</Text>
+            )}
+            <Text style={tvStyles.epDateText}>{formatDate(item.watchedDate)}</Text>
+          </View>
+        </View>
+
+        {item.liked && (
+          <Ionicons name="heart" size={14} color={COLORS.coral} style={{ marginLeft: SPACING.xs }} />
+        )}
+        {favoriteEpisodeIds.has(item.episodeId) && (
+          <Ionicons name="star" size={14} color={COLORS.primary} style={{ marginLeft: SPACING.xs }} />
+        )}
+      </TouchableOpacity>
+    );
   };
 
-  const onPagerScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const page = Math.round(e.nativeEvent.contentOffset.x / screenWidth);
-    const newTab = page === 0 ? 'movies' : 'tvshows';
-    if (newTab !== activeTab) setActiveTab(newTab);
+  // ── Breadcrumb header for TV drill-down ──
+  const renderBreadcrumb = () => {
+    if (tvLevel === 'shows' || !selectedShow) return null;
+
+    return (
+      <View style={tvStyles.breadcrumb}>
+        <TouchableOpacity onPress={drillBack} style={tvStyles.breadcrumbBack} activeOpacity={0.7}>
+          <Ionicons name="chevron-back" size={18} color={COLORS.primary} />
+        </TouchableOpacity>
+
+        <View style={tvStyles.breadcrumbContent}>
+          <Text style={tvStyles.breadcrumbTitle} numberOfLines={1}>{selectedShow.seriesName}</Text>
+          <Text style={tvStyles.breadcrumbSub}>
+            {selectedShowEpisodes.length} episode{selectedShowEpisodes.length !== 1 ? 's' : ''}{showFavoritesOnly ? ' favorited' : ' watched'}
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          onPress={() => onSelectShow?.(selectedShow.seriesId)}
+          style={tvStyles.infoButton}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="information-circle-outline" size={22} color={COLORS.primary} />
+        </TouchableOpacity>
+      </View>
+    );
   };
 
+  // ── Loading state ──
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -249,16 +390,53 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
     );
   }
 
+  // ── Drill-down view: show's episodes ──
+  if (tvLevel === 'episodes') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.safeArea}>
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>{showFavoritesOnly ? 'Favorites' : 'Watch Log'}</Text>
+          </View>
+          {renderBreadcrumb()}
+          <FlatList
+            data={selectedShowEpisodes}
+            renderItem={renderEpisodeRow}
+            keyExtractor={item => `ep_${item.episodeId}`}
+            contentContainerStyle={styles.list}
+            showsVerticalScrollIndicator={false}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Main unified list ──
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.safeArea}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Watch Log</Text>
-          {totalCount > 0 && (
+          <Text style={styles.headerTitle}>{showFavoritesOnly ? 'Favorites' : 'Watch Log'}</Text>
+          {!showFavoritesOnly && totalCount > 0 && (
             <View style={styles.countBadge}>
               <Text style={styles.countText}>{totalCount}</Text>
             </View>
           )}
+          <View style={{ flex: 1 }} />
+          <TouchableOpacity
+            onPress={() => {
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              setShowFavoritesOnly(!showFavoritesOnly);
+            }}
+            style={[styles.favFilterBtn, showFavoritesOnly && styles.favFilterBtnActive]}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name={showFavoritesOnly ? 'star' : 'star-outline'}
+              size={18}
+              color={showFavoritesOnly ? COLORS.primary : COLORS.text.muted}
+            />
+          </TouchableOpacity>
         </View>
 
         {/* Search bar */}
@@ -266,7 +444,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
           <Ionicons name="search" size={16} color={COLORS.text.muted} style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
-            placeholder={activeTab === 'movies' ? 'Search movies...' : 'Search TV shows...'}
+            placeholder="Search movies & shows..."
             placeholderTextColor={COLORS.text.muted}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -280,219 +458,35 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
           )}
         </View>
 
-        {/* Tabs */}
-        <View style={styles.tabBar}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'movies' && styles.tabActive]}
-            onPress={() => switchTab('movies')}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="film-outline" size={14} color={activeTab === 'movies' ? COLORS.primary : COLORS.text.muted} />
-            <Text style={[styles.tabText, activeTab === 'movies' && styles.tabTextActive]}>
-              Movies{movies.length > 0 ? ` (${movies.length})` : ''}
+        {unifiedItems.length === 0 ? (
+          <View style={styles.centered}>
+            <View style={styles.emptyIconWrap}>
+              <Ionicons name={showFavoritesOnly ? 'star-outline' : query ? 'search-outline' : 'albums-outline'} size={48} color={COLORS.text.muted} />
+            </View>
+            <Text style={styles.emptyTitle}>
+              {showFavoritesOnly ? 'No favorites yet' : query ? 'No results' : 'Nothing logged yet'}
             </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'tvshows' && styles.tabActive]}
-            onPress={() => switchTab('tvshows')}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="tv-outline" size={14} color={activeTab === 'tvshows' ? COLORS.primary : COLORS.text.muted} />
-            <Text style={[styles.tabText, activeTab === 'tvshows' && styles.tabTextActive]}>
-              TV Shows{episodes.length > 0 ? ` (${episodes.length})` : ''}
+            <Text style={styles.emptySubtitle}>
+              {showFavoritesOnly
+                ? 'Favorite movies and episodes will appear here'
+                : query
+                ? `No movies or shows matching "${searchQuery}"`
+                : 'Movies and TV shows you watch will appear here'}
             </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Swipeable pager */}
-        <ScrollView
-          ref={pagerRef}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          onMomentumScrollEnd={onPagerScroll}
-          scrollEventThrottle={16}
-          style={styles.pager}
-        >
-          {/* Movies page */}
-          <View style={{ width: screenWidth }}>
-            {filteredMovies.length === 0 ? (
-              <View style={styles.centered}>
-                <View style={styles.emptyIconWrap}>
-                  <Ionicons name={query ? 'search-outline' : 'film-outline'} size={48} color={COLORS.text.muted} />
-                </View>
-                <Text style={styles.emptyTitle}>{query ? 'No results' : 'No movies logged'}</Text>
-                <Text style={styles.emptySubtitle}>
-                  {query ? `No movies matching "${searchQuery}"` : "Tap the + button to log movies you've watched"}
-                </Text>
-              </View>
-            ) : (
-              <FlatList
-                data={filteredMovies}
-                renderItem={renderMovieItem}
-                keyExtractor={item => `m_${item.movieId}_${item.watchedDate}`}
-                contentContainerStyle={styles.list}
-                showsVerticalScrollIndicator={false}
-              />
-            )}
           </View>
-
-          {/* TV Shows page */}
-          <View style={{ width: screenWidth }}>
-            {selectedSection ? (
-              /* ── Drill-down: single show's episodes ── */
-              <View style={{ flex: 1 }}>
-                <TouchableOpacity style={styles.drillHeader} onPress={drillBack} activeOpacity={0.7}>
-                  <Ionicons name="chevron-back" size={20} color={COLORS.primary} />
-                  <Text style={styles.drillTitle} numberOfLines={1}>{selectedSection.seriesName}</Text>
-                  <Text style={styles.sectionCount}>
-                    {selectedSection.data.length} episode{selectedSection.data.length !== 1 ? 's' : ''}
-                  </Text>
-                </TouchableOpacity>
-                <FlatList
-                  data={selectedSection.data}
-                  keyExtractor={item => `e_${item.episodeId}`}
-                  contentContainerStyle={styles.list}
-                  showsVerticalScrollIndicator={false}
-                  renderItem={({ item, index }) => {
-                    const starRating = item.rating || 0;
-                    return (
-                      <TouchableOpacity
-                        style={styles.row}
-                        onLongPress={() => handleRemoveEpisode(item.episodeId, item.episodeName || 'this episode')}
-                        activeOpacity={0.7}
-                      >
-                        <View style={styles.timeline}>
-                          <View style={[styles.timelineDot, { backgroundColor: starRating > 0 ? COLORS.primary : COLORS.text.muted }]} />
-                          {index < selectedSection.data.length - 1 && <View style={styles.timelineLine} />}
-                        </View>
-
-                        {item.stillPath ? (
-                          <Image
-                            source={{ uri: tmdbService.getImageUrl(item.stillPath, 'w300') }}
-                            style={styles.episodeStill}
-                          />
-                        ) : (
-                          <View style={[styles.episodeStill, styles.episodeStillPlaceholder]}>
-                            <Ionicons name="tv-outline" size={18} color={COLORS.text.muted} />
-                          </View>
-                        )}
-
-                        <View style={styles.info}>
-                          <Text style={styles.title} numberOfLines={1}>
-                            {item.episodeName || `Episode ${item.episodeNumber}`}
-                          </Text>
-                          <Text style={styles.meta} numberOfLines={1}>
-                            S{item.seasonNumber}E{item.episodeNumber}
-                          </Text>
-                          <View style={styles.bottomRow}>
-                            {starRating > 0 ? (
-                              <View style={styles.starsRow}>
-                                {renderHalfStars(starRating)}
-                              </View>
-                            ) : (
-                              <Text style={styles.genreText}>Not rated</Text>
-                            )}
-                            <Text style={styles.dateText}>{formatDate(item.watchedDate)}</Text>
-                          </View>
-                        </View>
-
-                        {item.liked && (
-                          <View style={styles.likedCol}>
-                            <Ionicons name="heart" size={16} color={COLORS.primary} />
-                          </View>
-                        )}
-                      </TouchableOpacity>
-                    );
-                  }}
-                />
-              </View>
-            ) : filteredSections.length === 0 ? (
-              <View style={styles.centered}>
-                <View style={styles.emptyIconWrap}>
-                  <Ionicons name={query ? 'search-outline' : 'tv-outline'} size={48} color={COLORS.text.muted} />
-                </View>
-                <Text style={styles.emptyTitle}>{query ? 'No results' : 'No episodes logged'}</Text>
-                <Text style={styles.emptySubtitle}>
-                  {query ? `No shows matching "${searchQuery}"` : 'Mark episodes as watched from the show detail page'}
-                </Text>
-              </View>
-            ) : (
-              <SectionList
-                sections={filteredSections}
-                renderSectionHeader={({ section }) => (
-                  <TouchableOpacity
-                    style={styles.sectionHeader}
-                    onPress={() => drillIntoShow(section.seriesId)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.sectionTitle}>{section.seriesName}</Text>
-                    <Text style={styles.sectionCount}>
-                      {section.data.length} episode{section.data.length !== 1 ? 's' : ''}
-                    </Text>
-                    <Ionicons name="chevron-forward" size={14} color={COLORS.text.muted} />
-                  </TouchableOpacity>
-                )}
-                renderItem={({ item, index, section }) => {
-                  const starRating = item.rating || 0;
-                  return (
-                    <TouchableOpacity
-                      style={styles.row}
-                      onPress={() => drillIntoShow(item.seriesId)}
-                      onLongPress={() => handleRemoveEpisode(item.episodeId, item.episodeName || 'this episode')}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.timeline}>
-                        <View style={[styles.timelineDot, { backgroundColor: starRating > 0 ? COLORS.primary : COLORS.text.muted }]} />
-                        {index < section.data.length - 1 && <View style={styles.timelineLine} />}
-                      </View>
-
-                      {item.stillPath ? (
-                        <Image
-                          source={{ uri: tmdbService.getImageUrl(item.stillPath, 'w300') }}
-                          style={styles.episodeStill}
-                        />
-                      ) : (
-                        <View style={[styles.episodeStill, styles.episodeStillPlaceholder]}>
-                          <Ionicons name="tv-outline" size={18} color={COLORS.text.muted} />
-                        </View>
-                      )}
-
-                      <View style={styles.info}>
-                        <Text style={styles.title} numberOfLines={1}>
-                          {item.episodeName || `Episode ${item.episodeNumber}`}
-                        </Text>
-                        <Text style={styles.meta} numberOfLines={1}>
-                          S{item.seasonNumber}E{item.episodeNumber}
-                        </Text>
-                        <View style={styles.bottomRow}>
-                          {starRating > 0 ? (
-                            <View style={styles.starsRow}>
-                              {renderHalfStars(starRating)}
-                            </View>
-                          ) : (
-                            <Text style={styles.genreText}>Not rated</Text>
-                          )}
-                          <Text style={styles.dateText}>{formatDate(item.watchedDate)}</Text>
-                        </View>
-                      </View>
-
-                      {item.liked && (
-                        <View style={styles.likedCol}>
-                          <Ionicons name="heart" size={16} color={COLORS.primary} />
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  );
-                }}
-                keyExtractor={item => `e_${item.episodeId}`}
-                contentContainerStyle={styles.list}
-                showsVerticalScrollIndicator={false}
-                stickySectionHeadersEnabled={false}
-              />
-            )}
-          </View>
-        </ScrollView>
+        ) : (
+          <FlatList
+            data={unifiedItems}
+            renderItem={renderUnifiedItem}
+            keyExtractor={(item, index) =>
+              item.type === 'movie'
+                ? `m_${item.data.movieId}_${item.data.watchedDate}`
+                : `s_${item.data.seriesId}`
+            }
+            contentContainerStyle={styles.list}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
       </View>
     </SafeAreaView>
   );
@@ -551,38 +545,6 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.body,
     fontSize: 14,
     paddingVertical: 0,
-  },
-  tabBar: {
-    flexDirection: 'row',
-    marginHorizontal: SPACING.m,
-    marginBottom: SPACING.s,
-    borderRadius: BORDER_RADIUS.s,
-    backgroundColor: COLORS.card,
-    padding: 3,
-  },
-  tab: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    borderRadius: BORDER_RADIUS.xs,
-  },
-  tabActive: {
-    backgroundColor: COLORS.surface,
-  },
-  tabText: {
-    color: COLORS.text.muted,
-    fontFamily: FONTS.bodyMedium,
-    fontSize: 13,
-  },
-  tabTextActive: {
-    color: COLORS.primary,
-    fontFamily: FONTS.heading,
-  },
-  pager: {
-    flex: 1,
   },
   centered: {
     flex: 1,
@@ -695,45 +657,142 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.mono,
     fontSize: 9,
   },
-  episodeStill: {
-    width: 80,
-    height: 45,
+  favFilterBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.card,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+  },
+  favFilterBtnActive: {
+    backgroundColor: COLORS.primaryMuted,
+    borderColor: COLORS.primary,
+  },
+});
+
+// ── TV drill-down styles ──
+const tvStyles = StyleSheet.create({
+  // Level 1: Show cards
+  showCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderRadius: BORDER_RADIUS.m,
+    padding: SPACING.s,
+    marginBottom: SPACING.s,
+    gap: SPACING.s,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+  },
+  showPoster: {
+    width: 64,
+    height: 48,
+    borderRadius: BORDER_RADIUS.xs,
+    backgroundColor: COLORS.surface,
+  },
+  posterPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  showInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  showName: {
+    color: COLORS.text.primary,
+    fontFamily: FONTS.heading,
+    fontSize: 15,
+  },
+  showMeta: {
+    color: COLORS.text.muted,
+    fontFamily: FONTS.mono,
+    fontSize: 11,
+  },
+  showBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.s,
+    marginTop: 2,
+  },
+  avgRatingWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  avgRatingText: {
+    color: COLORS.primary,
+    fontFamily: FONTS.heading,
+    fontSize: 12,
+  },
+  showDate: {
+    color: COLORS.text.muted,
+    fontFamily: FONTS.body,
+    fontSize: 10,
+  },
+
+  // Level 3: Episode rows
+  episodeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: SPACING.xs,
+    gap: SPACING.s,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.borderLight,
+  },
+  epNumberWrap: {
+    width: 24,
+    alignItems: 'center',
+  },
+  epNumber: {
+    color: COLORS.text.muted,
+    fontFamily: FONTS.mono,
+    fontSize: 12,
+  },
+  epStill: {
+    width: 72,
+    height: 42,
     borderRadius: BORDER_RADIUS.xs,
     backgroundColor: COLORS.card,
   },
-  episodeStillPlaceholder: {
+  epStillPlaceholder: {
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  epInfo: {
+    flex: 1,
+    gap: 3,
+  },
+  epTitle: {
+    color: COLORS.text.primary,
+    fontFamily: FONTS.heading,
+    fontSize: 13,
+  },
+  epMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   starsRow: {
     flexDirection: 'row',
     gap: 1,
   },
-  likedCol: {
-    alignItems: 'center',
-    minWidth: 36,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: SPACING.s,
-    paddingHorizontal: SPACING.xs,
-    marginTop: SPACING.m,
-    marginBottom: SPACING.xs,
-    gap: SPACING.s,
-  },
-  sectionTitle: {
-    color: COLORS.primary,
-    fontFamily: FONTS.heading,
-    fontSize: 16,
-    flex: 1,
-  },
-  sectionCount: {
+  epMetaText: {
     color: COLORS.text.muted,
-    fontFamily: FONTS.mono,
+    fontFamily: FONTS.body,
     fontSize: 11,
   },
-  drillHeader: {
+  epDateText: {
+    color: COLORS.text.muted,
+    fontFamily: FONTS.body,
+    fontSize: 10,
+  },
+
+  // Breadcrumb navigation
+  breadcrumb: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.m,
@@ -743,10 +802,29 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.borderLight,
     marginBottom: SPACING.xs,
   },
-  drillTitle: {
+  breadcrumbBack: {
+    padding: 4,
+  },
+  breadcrumbContent: {
     flex: 1,
+    gap: 1,
+  },
+  breadcrumbTitle: {
     color: COLORS.primary,
     fontFamily: FONTS.heading,
-    fontSize: 17,
+    fontSize: 16,
+  },
+  breadcrumbSub: {
+    color: COLORS.text.muted,
+    fontFamily: FONTS.mono,
+    fontSize: 11,
+  },
+  infoButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.primaryMuted,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

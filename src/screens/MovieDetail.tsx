@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, SafeAreaView, ImageBackground, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ImageBackground, Platform, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, LAYOUT, getRatingColor } from '../constants/theme';
@@ -196,12 +197,12 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
               onPress={toggleWatchlist}
             >
               <Ionicons 
-                name={isInWatchlist ? "heart" : "heart-outline"} 
+                name={isInWatchlist ? "bookmark" : "bookmark-outline"} 
                 size={18} 
                 color={isInWatchlist ? COLORS.primary : COLORS.text.primary} 
               />
               <Text style={[styles.actionText, isInWatchlist && styles.actionTextActive]}>
-                {isInWatchlist ? 'Saved' : 'Save'}
+                {isInWatchlist ? 'In Watchlist' : 'Watchlist'}
               </Text>
             </TouchableOpacity>
 

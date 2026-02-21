@@ -18,6 +18,7 @@ import { COLORS, FONTS, SPACING, BORDER_RADIUS, getRatingColor } from '../consta
 import { tmdbService } from '../services/tmdbService';
 import { StorageProvider } from '../services/StorageProvider';
 import { SearchResult, WatchedMovie, MovieDetail } from '../types';
+import { DatePickerModal } from '../components/DatePicker';
 
 interface AddWatchedScreenProps {
   onClose: () => void;
@@ -30,6 +31,10 @@ export const AddWatchedScreen: React.FC<AddWatchedScreenProps> = ({ onClose }) =
   const [selectedMovie, setSelectedMovie] = useState<MovieDetail | null>(null);
   const [ratingModalVisible, setRatingModalVisible] = useState(false);
   const [selectedRating, setSelectedRating] = useState(7);
+  const [watchedDate, setWatchedDate] = useState(new Date());
+  const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [existingEntry, setExistingEntry] = useState<WatchedMovie | null>(null);
   const searchInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -56,8 +61,22 @@ export const AddWatchedScreen: React.FC<AddWatchedScreenProps> = ({ onClose }) =
     setLoading(true);
     const movieDetails = await tmdbService.getMovieDetails(item.id);
     if (movieDetails) {
-      setSelectedMovie(movieDetails);
-      setRatingModalVisible(true);
+      // Check if already logged
+      const existing = await StorageProvider.isMovieWatched(item.id);
+      if (existing) {
+        setExistingEntry(existing);
+        setSelectedMovie(movieDetails);
+        setSelectedRating(existing.rating);
+        setIsEditMode(true);
+        setRatingModalVisible(true);
+      } else {
+        setExistingEntry(null);
+        setSelectedMovie(movieDetails);
+        setSelectedRating(7);
+        setWatchedDate(new Date());
+        setIsEditMode(false);
+        setRatingModalVisible(true);
+      }
     }
     setLoading(false);
   };
@@ -65,22 +84,29 @@ export const AddWatchedScreen: React.FC<AddWatchedScreenProps> = ({ onClose }) =
   const handleConfirmWatched = async () => {
     if (!selectedMovie) return;
 
-    const watchedMovie: WatchedMovie = {
-      movieId: selectedMovie.id,
-      title: selectedMovie.title,
-      posterPath: selectedMovie.poster_path,
-      backdropPath: selectedMovie.backdrop_path,
-      rating: selectedRating,
-      watchedDate: new Date().toISOString(),
-      runtime: selectedMovie.runtime,
-      releaseDate: selectedMovie.release_date,
-      genres: selectedMovie.genres.map(g => g.name),
-      overview: selectedMovie.overview,
-    };
+    if (isEditMode) {
+      // Only update the rating
+      await StorageProvider.updateWatchedMovieRating(selectedMovie.id, selectedRating);
+    } else {
+      const watchedMovie: WatchedMovie = {
+        movieId: selectedMovie.id,
+        title: selectedMovie.title,
+        posterPath: selectedMovie.poster_path,
+        backdropPath: selectedMovie.backdrop_path,
+        rating: selectedRating,
+        watchedDate: watchedDate.toISOString(),
+        runtime: selectedMovie.runtime,
+        releaseDate: selectedMovie.release_date,
+        genres: selectedMovie.genres.map(g => g.name),
+        overview: selectedMovie.overview,
+      };
+      await StorageProvider.addToWatchedMovies(watchedMovie);
+    }
 
-    await StorageProvider.addToWatchedMovies(watchedMovie);
     setRatingModalVisible(false);
     setSelectedMovie(null);
+    setIsEditMode(false);
+    setExistingEntry(null);
     setQuery('');
     setResults([]);
     onClose();
@@ -179,9 +205,34 @@ export const AddWatchedScreen: React.FC<AddWatchedScreenProps> = ({ onClose }) =
           <View style={styles.modalContent}>
             <View style={styles.modalHandle} />
             
-            <Text style={styles.modalTitle}>Rate</Text>
+            <Text style={styles.modalTitle}>{isEditMode ? 'Update Rating' : 'Rate'}</Text>
             {selectedMovie && (
               <Text style={styles.modalSubtitle}>{selectedMovie.title}</Text>
+            )}
+
+            {/* Already logged notice */}
+            {isEditMode && existingEntry && (
+              <View style={styles.editNotice}>
+                <Ionicons name="checkmark-circle" size={16} color={COLORS.teal} />
+                <Text style={styles.editNoticeText}>
+                  Logged on {new Date(existingEntry.watchedDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                </Text>
+              </View>
+            )}
+
+            {/* Date picker — only for new entries */}
+            {!isEditMode && (
+              <TouchableOpacity
+                style={styles.dateRow}
+                onPress={() => setDatePickerVisible(true)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="calendar-outline" size={18} color={COLORS.text.secondary} />
+                <Text style={styles.dateText}>
+                  {watchedDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                </Text>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.text.muted} />
+              </TouchableOpacity>
             )}
 
             {/* Large rating display */}
@@ -222,12 +273,19 @@ export const AddWatchedScreen: React.FC<AddWatchedScreenProps> = ({ onClose }) =
                 style={styles.confirmButton}
                 onPress={handleConfirmWatched}
               >
-                <Text style={styles.confirmButtonText}>Log Movie</Text>
+                <Text style={styles.confirmButtonText}>{isEditMode ? 'Update' : 'Log Movie'}</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
+      {/* Date picker modal */}
+      <DatePickerModal
+        visible={datePickerVisible}
+        date={watchedDate}
+        onConfirm={(d) => { setWatchedDate(d); setDatePickerVisible(false); }}
+        onCancel={() => setDatePickerVisible(false)}
+      />
     </SafeAreaView>
   );
 };
@@ -388,6 +446,42 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     marginBottom: SPACING.m,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.s,
+    paddingVertical: SPACING.s,
+    paddingHorizontal: SPACING.m,
+    borderRadius: BORDER_RADIUS.s,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    marginBottom: SPACING.m,
+    width: '100%',
+  },
+  dateText: {
+    flex: 1,
+    color: COLORS.text.primary,
+    fontFamily: FONTS.bodyMedium,
+    fontSize: 14,
+  },
+  editNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.s,
+    borderRadius: BORDER_RADIUS.s,
+    backgroundColor: 'rgba(45, 212, 168, 0.1)',
+    marginBottom: SPACING.m,
+    width: '100%',
+    justifyContent: 'center',
+  },
+  editNoticeText: {
+    color: COLORS.teal,
+    fontFamily: FONTS.bodyMedium,
+    fontSize: 13,
   },
   ratingDisplay: {
     fontFamily: FONTS.display,

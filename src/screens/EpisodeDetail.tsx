@@ -1,15 +1,13 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, SafeAreaView, ImageBackground, Platform, ActivityIndicator, Modal, TextInput, Keyboard, PanResponder, GestureResponderEvent, LayoutChangeEvent, LayoutAnimation, UIManager } from 'react-native';
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ImageBackground, Platform, ActivityIndicator, Modal, TextInput, Keyboard, PanResponder, GestureResponderEvent, LayoutChangeEvent, LayoutAnimation } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, LAYOUT, getRatingColor } from '../constants/theme';
 import { tmdbService } from '../services/tmdbService';
 import { StorageProvider } from '../services/StorageProvider';
 import { Episode, TVShowDetail, SeasonDetail, SeasonSummary, WatchedEpisode, EpisodeDetailData } from '../types';
+import { DatePickerModal } from '../components/DatePicker';
 
 interface EpisodeDetailProps {
   route?: { params: { tvId: number; seasonNumber: number; episodeNumber: number } };
@@ -118,6 +116,7 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
   const [watchedRewatch, setWatchedRewatch] = useState(false);
   const [watchedNoSpoilers, setWatchedNoSpoilers] = useState(false);
   const [watchedDate, setWatchedDate] = useState<Date>(new Date());
+  const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [watchedEpisodeIds, setWatchedEpisodeIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
@@ -350,14 +349,6 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
             style={styles.backdropGradient}
           />
           
-          {onBack && (
-            <SafeAreaView style={styles.backSafe}>
-              <TouchableOpacity onPress={onBack} style={styles.backButton}>
-                <Ionicons name="chevron-back" size={20} color={COLORS.text.primary} />
-              </TouchableOpacity>
-            </SafeAreaView>
-          )}
-
           {/* Episode tag + rating on backdrop */}
           <View style={styles.backdropBottom}>
             <View style={styles.episodeTag}>
@@ -410,12 +401,12 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
               onPress={toggleWatchlist}
             >
               <Ionicons 
-                name={isInWatchlist ? "heart" : "heart-outline"} 
+                name={isInWatchlist ? "bookmark" : "bookmark-outline"} 
                 size={18} 
                 color={isInWatchlist ? COLORS.primary : COLORS.text.primary} 
               />
               <Text style={[styles.actionText, isInWatchlist && styles.actionTextActive]}>
-                {isInWatchlist ? 'Saved' : 'Save'}
+                {isInWatchlist ? 'In Watchlist' : 'Watchlist'}
               </Text>
             </TouchableOpacity>
 
@@ -667,6 +658,15 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
         </View>
       </ScrollView>
 
+      {/* Fixed back button – stays in place during scroll */}
+      {onBack && (
+        <SafeAreaView style={styles.backSafe} pointerEvents="box-none">
+          <TouchableOpacity onPress={onBack} style={styles.backButton}>
+            <Ionicons name="chevron-back" size={24} color={COLORS.text.primary} />
+          </TouchableOpacity>
+        </SafeAreaView>
+      )}
+
       {/* Watched Episode Modal */}
       <Modal
         visible={watchedModalVisible}
@@ -711,16 +711,22 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
               )}
 
               {/* Date */}
-              <View style={watchedStyles.row}>
+              <TouchableOpacity style={watchedStyles.row} onPress={() => setDatePickerVisible(true)} activeOpacity={0.7}>
                 <Text style={watchedStyles.rowLabel}>Date</Text>
                 <View style={watchedStyles.dateRight}>
+                  <Ionicons name="calendar-outline" size={16} color={COLORS.text.secondary} />
                   <Text style={watchedStyles.dateText}>{formatDate(watchedDate)}</Text>
-                  <TouchableOpacity onPress={() => setWatchedDate(new Date())}>
-                    <Ionicons name="close-circle" size={20} color={COLORS.text.muted} />
-                  </TouchableOpacity>
+                  <Ionicons name="chevron-forward" size={16} color={COLORS.text.muted} />
                 </View>
-              </View>
+              </TouchableOpacity>
               <View style={watchedStyles.separator} />
+
+              <DatePickerModal
+                visible={datePickerVisible}
+                date={watchedDate}
+                onConfirm={(d) => { setWatchedDate(d); setDatePickerVisible(false); }}
+                onCancel={() => setDatePickerVisible(false)}
+              />
 
               {/* Star rating + Like */}
               <View style={watchedStyles.ratingLikeRow}>
@@ -840,11 +846,12 @@ const styles = StyleSheet.create({
     top: Platform.OS === 'android' ? 32 : 0,
     left: 0,
     right: 0,
+    zIndex: 10,
   },
   backButton: {
     margin: SPACING.m,
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     borderRadius: BORDER_RADIUS.round,
     backgroundColor: 'rgba(25,25,35,0.7)',
     justifyContent: 'center',

@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
 import { View, StyleSheet, StatusBar } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { 
@@ -39,10 +40,12 @@ export default function App() {
   }
 
   return (
-    <View style={styles.container} onLayout={onLayoutRootView}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.background} translucent={false} />
-      <MainNavigation />
-    </View>
+    <SafeAreaProvider>
+      <View style={styles.container} onLayout={onLayoutRootView}>
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.background} translucent={false} />
+        <MainNavigation />
+      </View>
+    </SafeAreaProvider>
   );
 }
 

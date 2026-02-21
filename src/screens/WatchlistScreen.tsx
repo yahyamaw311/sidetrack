@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, SafeAreaView, Platform } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../constants/theme';
 import { tmdbService } from '../services/tmdbService';
@@ -75,11 +76,11 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow }
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
       <View style={styles.emptyIconWrap}>
-        <Ionicons name="heart-outline" size={48} color={COLORS.text.muted} />
+        <Ionicons name="bookmark-outline" size={48} color={COLORS.text.muted} />
       </View>
-      <Text style={styles.emptyTitle}>Nothing saved yet</Text>
+      <Text style={styles.emptyTitle}>Your watchlist is empty</Text>
       <Text style={styles.emptySubtitle}>
-        Items you save will appear here for easy access
+        Add movies and shows you want to watch next
       </Text>
     </View>
   );
@@ -88,7 +89,7 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow }
     <View style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Saved</Text>
+          <Text style={styles.headerTitle}>Watchlist</Text>
           {items.length > 0 && (
             <View style={styles.countBadge}>
               <Text style={styles.countText}>{items.length}</Text>
