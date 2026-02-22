@@ -1,24 +1,16 @@
 SIDETRACK — TODO
 =================
 
-## 🎨 UI / UX Polish
-- [ ] Animated page transitions (shared element: poster image from list → detail)
-- [ ] Skeleton loading screens for Movie/Episode detail (instead of spinner)
-- [ ] Haptic feedback on star rating, favoriting, and watchlist toggle
-- [ ] Swipe-to-delete in Watchlist and History (instead of long-press)
-- [ ] Dark/light theme toggle (Settings screen)
-- [ ] Custom app icon selector
-- [ ] Splash screen with animated logo
-
 ## 📺 Discovery & Browse
 - [ ] Genre filter chips on Explore (Action, Comedy, Drama, etc.)
 - [ ] "Top Rated" section (all-time best rated shows/movies)
 - [ ] "Coming Soon" section — upcoming releases with air dates
 - [ ] Infinite scroll / pagination for search results
+- [x] Swipe-to-delete in Watchlist and History (instead of long-press)
 - [ ] Recent searches history (persist locally)
 - [ ] "Similar Shows" / "Recommended" section on detail pages
 - [ ] Cast & crew section on detail pages (tap to see their other work)
-- [ ] Trailers — embed YouTube trailer on Movie/Episode detail
+- [x] Trailers — embed YouTube trailer on Movie/Episode detail
 
 ## 📊 Stats & Insights (new tab or section)
 - [ ] Total hours watched (movies + episodes runtime)

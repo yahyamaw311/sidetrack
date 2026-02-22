@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../constants/theme';
 import { tmdbService } from '../services/tmdbService';
 import { StorageProvider } from '../services/StorageProvider';
+import { SwipeableRow } from '../components/SwipeableRow';
 import { QueuedItem } from '../types';
 
 interface WatchlistScreenProps {
@@ -26,22 +27,9 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow }
     loadWatchlist();
   }, [loadWatchlist]);
 
-  const handleRemove = (seriesId: number, name: string) => {
-    Alert.alert(
-      'Remove from Watchlist',
-      `Remove "${name}" from your watchlist?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            await StorageProvider.removeFromWatchlist(seriesId);
-            await loadWatchlist();
-          },
-        },
-      ]
-    );
+  const handleRemove = async (seriesId: number) => {
+    await StorageProvider.removeFromWatchlist(seriesId);
+    await loadWatchlist();
   };
 
   const formatDate = (isoDate: string) => {
@@ -50,40 +38,35 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow }
   };
 
   const renderItem = ({ item }: { item: QueuedItem }) => (
-    <TouchableOpacity
-      onPress={() => onSelectShow(item.seriesId, item.itemType || 'tv')}
-      style={styles.card}
-      activeOpacity={0.7}
-    >
-      <Image
-        source={{ uri: tmdbService.getImageUrl(item.posterPath) }}
-        style={styles.poster}
-        resizeMode="cover"
-      />
-      <View style={styles.cardContent}>
-        <View style={styles.cardTop}>
-          <View style={styles.typeBadge}>
-            <Text style={styles.typeBadgeText}>
-              {(item.itemType || 'tv') === 'movie' ? 'MOVIE' : 'SERIES'}
-            </Text>
+    <SwipeableRow onDelete={() => handleRemove(item.seriesId)}>
+      <TouchableOpacity
+        onPress={() => onSelectShow(item.seriesId, item.itemType || 'tv')}
+        style={styles.card}
+        activeOpacity={0.7}
+      >
+        <Image
+          source={{ uri: tmdbService.getImageUrl(item.posterPath) }}
+          style={styles.poster}
+          resizeMode="cover"
+        />
+        <View style={styles.cardContent}>
+          <View style={styles.cardTop}>
+            <View style={styles.typeBadge}>
+              <Text style={styles.typeBadgeText}>
+                {(item.itemType || 'tv') === 'movie' ? 'MOVIE' : 'SERIES'}
+              </Text>
+            </View>
           </View>
-          <TouchableOpacity
-            onPress={() => handleRemove(item.seriesId, item.name)}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            style={styles.removeBtn}
-          >
-            <Ionicons name="close" size={16} color={COLORS.text.muted} />
-          </TouchableOpacity>
-        </View>
-        <View style={styles.cardBottom}>
-          <Text style={styles.title} numberOfLines={2}>{item.name}</Text>
-          <View style={styles.dateLine}>
-            <Ionicons name="time-outline" size={12} color={COLORS.text.muted} />
-            <Text style={styles.dateText}>Added {formatDate(item.addedDate)}</Text>
+          <View style={styles.cardBottom}>
+            <Text style={styles.title} numberOfLines={2}>{item.name}</Text>
+            <View style={styles.dateLine}>
+              <Ionicons name="time-outline" size={12} color={COLORS.text.muted} />
+              <Text style={styles.dateText}>Added {formatDate(item.addedDate)}</Text>
+            </View>
           </View>
         </View>
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </SwipeableRow>
   );
 
   const renderEmpty = () => (

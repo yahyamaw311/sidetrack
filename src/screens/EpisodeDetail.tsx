@@ -1,8 +1,10 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ImageBackground, Platform, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ImageBackground, Platform, ActivityIndicator, Animated, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import YoutubePlayer from 'react-native-youtube-iframe';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, LAYOUT, getRatingColor } from '../constants/theme';
 import { tmdbService } from '../services/tmdbService';
 import { StorageProvider } from '../services/StorageProvider';
@@ -29,10 +31,28 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
   const [showImdbRating, setShowImdbRating] = useState<string | null>(null);
   const [showImdbVotes, setShowImdbVotes] = useState<string | null>(null);
 
-  // Watched modal state
   const [watchedModalVisible, setWatchedModalVisible] = useState(false);
   const [watchedEpisode, setWatchedEpisode] = useState<Episode | null>(null);
   const [watchedEpisodeIds, setWatchedEpisodeIds] = useState<Set<number>>(new Set());
+  const [trailerKey, setTrailerKey] = useState<string | null>(null);
+  const [trailerExpanded, setTrailerExpanded] = useState(false);
+  const [trailerReady, setTrailerReady] = useState(false);
+  const trailerAnim = useRef(new Animated.Value(0)).current;
+  const trailerShimmerAnim = useRef(new Animated.Value(0.3)).current;
+
+  // Shimmer pulse for trailer skeleton
+  useEffect(() => {
+    if (trailerExpanded && !trailerReady) {
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(trailerShimmerAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+          Animated.timing(trailerShimmerAnim, { toValue: 0.3, duration: 800, useNativeDriver: true }),
+        ])
+      );
+      loop.start();
+      return () => loop.stop();
+    }
+  }, [trailerExpanded, trailerReady]);
 
   useEffect(() => {
     loadData();
@@ -60,6 +80,11 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
           setShowImdbVotes(showRating.imdbVotes);
         }
       }
+
+      // Fetch trailer
+      tmdbService.getTVTrailer(tvId).then(key => {
+        if (key) setTrailerKey(key);
+      });
     }
 
     if (seasonData) {
@@ -91,6 +116,7 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
   };
 
   const openWatchedModal = useCallback((ep: Episode) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setWatchedEpisode(ep);
     setWatchedModalVisible(true);
   }, []);
@@ -116,6 +142,8 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
       tags: data.tags.trim() ? data.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
       rewatch: data.rewatch,
       noSpoilers: data.noSpoilers,
+      runtime: watchedEpisode.runtime,
+      genres: show.genres?.map(g => g.name),
     };
 
     await StorageProvider.markEpisodeAsWatched(entry);
@@ -172,7 +200,7 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
 
   const toggleWatchlist = async () => {
     if (!show) return;
-
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (isInWatchlist) {
       await StorageProvider.removeFromWatchlist(tvId);
       setIsInWatchlist(false);
@@ -190,6 +218,7 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
 
   const toggleFavorite = async () => {
     if (episode) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       const newState = !isFavorite;
       await StorageProvider.toggleFavoriteEpisode(episode.id, newState);
       setIsFavorite(newState);
@@ -206,11 +235,49 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
   // Filter out specials (season 0) from the seasons list
   const displaySeasons = show?.seasons.filter(s => s.season_number > 0) || [];
 
+  // Skeleton shimmer animation
+  const shimmerAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (loading) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(shimmerAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
+          Animated.timing(shimmerAnim, { toValue: 0, duration: 1000, useNativeDriver: true }),
+        ])
+      ).start();
+    }
+  }, [loading, shimmerAnim]);
+
+  const shimmerOpacity = shimmerAnim.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0.6] });
+
   if (loading) {
     return (
       <View style={styles.container}>
-        <View style={styles.centered}>
-          <ActivityIndicator color={COLORS.primary} size="large" />
+        {onBack && (
+          <SafeAreaView style={styles.backSafe}>
+            <TouchableOpacity onPress={onBack} style={styles.backButton}>
+              <Ionicons name="chevron-back" size={24} color={COLORS.text.primary} />
+            </TouchableOpacity>
+          </SafeAreaView>
+        )}
+        <View style={skelStyles.wrapper}>
+          <Animated.View style={[skelStyles.backdrop, { opacity: shimmerOpacity }]} />
+          <View style={skelStyles.content}>
+            <Animated.View style={[skelStyles.titleLine, { opacity: shimmerOpacity }]} />
+            <Animated.View style={[skelStyles.subtitleLine, { opacity: shimmerOpacity }]} />
+            <View style={skelStyles.metaRow}>
+              <Animated.View style={[skelStyles.metaChip, { opacity: shimmerOpacity }]} />
+              <Animated.View style={[skelStyles.metaChip, { opacity: shimmerOpacity }]} />
+              <Animated.View style={[skelStyles.metaChip, { opacity: shimmerOpacity }]} />
+            </View>
+            <View style={skelStyles.actionRow}>
+              <Animated.View style={[skelStyles.actionBtn, { opacity: shimmerOpacity }]} />
+              <Animated.View style={[skelStyles.actionBtn, { opacity: shimmerOpacity }]} />
+            </View>
+            <Animated.View style={[skelStyles.divider, { opacity: shimmerOpacity }]} />
+            <Animated.View style={[skelStyles.textBlock, { opacity: shimmerOpacity }]} />
+            <Animated.View style={[skelStyles.textBlockShort, { opacity: shimmerOpacity }]} />
+          </View>
         </View>
       </View>
     );
@@ -330,11 +397,67 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
                 <Text style={styles.showInfoLabel}>{showImdbRating ? 'IMDb' : 'Rating'}</Text>
               </View>
               <View style={styles.showInfoDivider} />
-              <View style={styles.showInfoItem}>
-                <View style={[styles.statusDot, show.status === 'Ended' && styles.statusEnded]} />
-                <Text style={styles.showInfoLabel}>{show.status}</Text>
-              </View>
+              {trailerKey ? (
+                <TouchableOpacity style={styles.showInfoItem} onPress={() => {
+                  const toValue = trailerExpanded ? 0 : 1;
+                  if (trailerExpanded) setTrailerReady(false);
+                  setTrailerExpanded(!trailerExpanded);
+                  Animated.spring(trailerAnim, {
+                    toValue,
+                    damping: 18,
+                    stiffness: 140,
+                    useNativeDriver: false,
+                  }).start();
+                }} activeOpacity={0.7}>
+                  <Ionicons name="logo-youtube" size={24} color="#FF0000" />
+                  <Text style={styles.showInfoLabel}>{trailerExpanded ? 'Close' : 'Trailer'}</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.showInfoItem}>
+                  <View style={[styles.statusDot, show.status === 'Ended' && styles.statusEnded]} />
+                  <Text style={styles.showInfoLabel}>{show.status}</Text>
+                </View>
+              )}
             </View>
+
+            {/* Animated Trailer Player */}
+            <Animated.View style={{
+              height: trailerAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, Dimensions.get('window').width * 0.52],
+              }),
+              opacity: trailerAnim,
+              overflow: 'hidden',
+              borderRadius: BORDER_RADIUS.m,
+              marginTop: trailerAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, SPACING.m],
+              }),
+            }}>
+              {/* Shimmer skeleton while loading */}
+              {trailerExpanded && !trailerReady && (
+                <Animated.View style={{
+                  ...StyleSheet.absoluteFillObject,
+                  backgroundColor: COLORS.card,
+                  opacity: trailerShimmerAnim,
+                  borderRadius: BORDER_RADIUS.m,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  zIndex: 2,
+                }}>
+                  <Ionicons name="logo-youtube" size={40} color={COLORS.text.muted} />
+                </Animated.View>
+              )}
+              {trailerExpanded && (
+                <YoutubePlayer
+                  height={Dimensions.get('window').width * 0.52}
+                  videoId={trailerKey!}
+                  play={trailerExpanded}
+                  onReady={() => setTrailerReady(true)}
+                  webViewProps={{ allowsInlineMediaPlayback: true }}
+                />
+              )}
+            </Animated.View>
           </View>
 
           {/* Divider */}
@@ -625,5 +748,58 @@ const styles = StyleSheet.create({
   },
   statusEnded: {
     backgroundColor: COLORS.text.muted,
+  },
+});
+
+// ── Skeleton loader styles ──
+const skelStyles = StyleSheet.create({
+  wrapper: { flex: 1 },
+  backdrop: {
+    height: LAYOUT.window.height * 0.35,
+    backgroundColor: COLORS.card,
+  },
+  content: {
+    paddingHorizontal: SPACING.m,
+    paddingTop: SPACING.l,
+    gap: SPACING.m,
+  },
+  titleLine: {
+    height: 24,
+    width: '65%',
+    backgroundColor: COLORS.card,
+    borderRadius: BORDER_RADIUS.xs,
+  },
+  subtitleLine: {
+    height: 14,
+    width: '40%',
+    backgroundColor: COLORS.card,
+    borderRadius: BORDER_RADIUS.xs,
+  },
+  metaRow: { flexDirection: 'row' as const, gap: SPACING.s },
+  metaChip: {
+    height: 28,
+    width: 72,
+    backgroundColor: COLORS.card,
+    borderRadius: BORDER_RADIUS.round,
+  },
+  actionRow: { flexDirection: 'row' as const, gap: SPACING.s },
+  actionBtn: {
+    flex: 1,
+    height: 44,
+    backgroundColor: COLORS.card,
+    borderRadius: BORDER_RADIUS.s,
+  },
+  divider: { height: 1, backgroundColor: COLORS.card },
+  textBlock: {
+    height: 14,
+    width: '100%',
+    backgroundColor: COLORS.card,
+    borderRadius: BORDER_RADIUS.xs,
+  },
+  textBlockShort: {
+    height: 14,
+    width: '60%',
+    backgroundColor: COLORS.card,
+    borderRadius: BORDER_RADIUS.xs,
   },
 });

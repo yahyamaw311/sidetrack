@@ -114,6 +114,8 @@ export interface WatchedEpisode {
   tags?: string[];
   rewatch?: boolean;
   noSpoilers?: boolean;
+  runtime?: number; // episode runtime in minutes
+  genres?: string[]; // show genres at time of logging
 }
 
 export interface CurrentlyWatchingItem {

@@ -251,4 +251,50 @@ export const tmdbService = {
       }
     });
   },
+
+  /**
+   * Get YouTube trailer key for a movie
+   */
+  getMovieTrailer: async (movieId: number): Promise<string | null> => {
+    const cacheKey = `movie_trailer_${movieId}`;
+    const cached = getCached<string>(cacheKey);
+    if (cached) return cached;
+    try {
+      const response = await tmdbClient.get<{ results: Array<{ key: string; site: string; type: string; official: boolean }> }>(
+        `/movie/${movieId}/videos`
+      );
+      const trailers = response.data.results.filter(
+        v => v.site === 'YouTube' && v.type === 'Trailer'
+      );
+      const key = (trailers.find(t => t.official) || trailers[0])?.key || null;
+      if (key) setCache(cacheKey, key);
+      return key;
+    } catch (error) {
+      console.error('TMDB Movie Trailer Error:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Get YouTube trailer key for a TV show
+   */
+  getTVTrailer: async (tvId: number): Promise<string | null> => {
+    const cacheKey = `tv_trailer_${tvId}`;
+    const cached = getCached<string>(cacheKey);
+    if (cached) return cached;
+    try {
+      const response = await tmdbClient.get<{ results: Array<{ key: string; site: string; type: string; official: boolean }> }>(
+        `/tv/${tvId}/videos`
+      );
+      const trailers = response.data.results.filter(
+        v => v.site === 'YouTube' && v.type === 'Trailer'
+      );
+      const key = (trailers.find(t => t.official) || trailers[0])?.key || null;
+      if (key) setCache(cacheKey, key);
+      return key;
+    } catch (error) {
+      console.error('TMDB TV Trailer Error:', error);
+      return null;
+    }
+  },
 };

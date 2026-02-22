@@ -149,9 +149,10 @@ const DiscoverySkeleton = () => (
 
 interface DiscoveryScreenProps {
   onSelectShow: (show: SearchResult) => void;
+  onBackRef?: (fn: (() => boolean) | null) => void;
 }
 
-export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow }) => {
+export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, onBackRef }) => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [trending, setTrending] = useState<SearchResult[]>([]);
@@ -169,6 +170,20 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow }
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
     };
   }, []);
+
+  // Register back handler with parent
+  useEffect(() => {
+    if (onBackRef) {
+      onBackRef(() => {
+        if (searchActive) {
+          clearSearch();
+          return true;
+        }
+        return false;
+      });
+    }
+    return () => { onBackRef?.(null); };
+  }, [searchActive, onBackRef]);
 
   const loadTrending = async () => {
     setLoading(true);

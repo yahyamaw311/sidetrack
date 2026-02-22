@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ImageBackground, Platform, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ImageBackground, Platform, ActivityIndicator, Animated, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import YoutubePlayer from 'react-native-youtube-iframe';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, LAYOUT, getRatingColor } from '../constants/theme';
 import { tmdbService } from '../services/tmdbService';
 import { StorageProvider } from '../services/StorageProvider';
@@ -21,6 +23,8 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
   const [isInWatchlist, setIsInWatchlist] = useState(false);
   const [imdbRating, setImdbRating] = useState<string | null>(null);
   const [imdbVotes, setImdbVotes] = useState<string | null>(null);
+  const [trailerKey, setTrailerKey] = useState<string | null>(null);
+  const [trailerPlaying, setTrailerPlaying] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -34,7 +38,7 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
     if (movieId) {
       const data = await tmdbService.getMovieDetails(movieId);
       setMovie(data);
-      
+
       if (data) {
         const [watchlist, favStatus] = await Promise.all([
           StorageProvider.getWatchlist(),
@@ -51,6 +55,11 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
             setImdbVotes(imdb.imdbVotes);
           }
         }
+
+        // Fetch trailer
+        tmdbService.getMovieTrailer(movieId).then(key => {
+          if (key) setTrailerKey(key);
+        });
       } else {
         setLoadError(true);
       }
@@ -60,7 +69,7 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
 
   const toggleWatchlist = async () => {
     if (!movie) return;
-    
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (isInWatchlist) {
       await StorageProvider.removeFromWatchlist(movieId);
       setIsInWatchlist(false);
@@ -84,6 +93,7 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
 
   const toggleFavorite = async () => {
     if (!movie) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const newState = !isFavorite;
     await StorageProvider.toggleFavoriteMovie(movieId, newState, newState ? {
       movieId: movie.id,
@@ -94,11 +104,51 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
     setIsFavorite(newState);
   };
 
+  // Skeleton shimmer animation
+  const shimmerAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (loading) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(shimmerAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
+          Animated.timing(shimmerAnim, { toValue: 0, duration: 1000, useNativeDriver: true }),
+        ])
+      ).start();
+    }
+  }, [loading, shimmerAnim]);
+
+  const shimmerOpacity = shimmerAnim.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0.6] });
+
   if (loading) {
     return (
       <View style={styles.container}>
-        <View style={styles.centered}>
-          <ActivityIndicator color={COLORS.primary} size="large" />
+        {onBack && (
+          <SafeAreaView style={styles.backSafe}>
+            <TouchableOpacity onPress={onBack} style={styles.backButton}>
+              <Ionicons name="chevron-back" size={20} color={COLORS.text.primary} />
+            </TouchableOpacity>
+          </SafeAreaView>
+        )}
+        <View style={skelStyles.wrapper}>
+          {/* Backdrop skeleton */}
+          <Animated.View style={[skelStyles.backdrop, { opacity: shimmerOpacity }]} />
+          {/* Content skeleton */}
+          <View style={skelStyles.content}>
+            <Animated.View style={[skelStyles.titleLine, { opacity: shimmerOpacity }]} />
+            <Animated.View style={[skelStyles.subtitleLine, { opacity: shimmerOpacity }]} />
+            <View style={skelStyles.metaRow}>
+              <Animated.View style={[skelStyles.metaChip, { opacity: shimmerOpacity }]} />
+              <Animated.View style={[skelStyles.metaChip, { opacity: shimmerOpacity }]} />
+              <Animated.View style={[skelStyles.metaChip, { opacity: shimmerOpacity }]} />
+            </View>
+            <View style={skelStyles.actionRow}>
+              <Animated.View style={[skelStyles.actionBtn, { opacity: shimmerOpacity }]} />
+              <Animated.View style={[skelStyles.actionBtn, { opacity: shimmerOpacity }]} />
+            </View>
+            <Animated.View style={[skelStyles.divider, { opacity: shimmerOpacity }]} />
+            <Animated.View style={[skelStyles.textBlock, { opacity: shimmerOpacity }]} />
+            <Animated.View style={[skelStyles.textBlockShort, { opacity: shimmerOpacity }]} />
+          </View>
         </View>
       </View>
     );
@@ -138,7 +188,7 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
             locations={[0, 0.6, 1]}
             style={styles.backdropGradient}
           />
-          
+
           {onBack && (
             <SafeAreaView style={styles.backSafe}>
               <TouchableOpacity onPress={onBack} style={styles.backButton}>
@@ -192,28 +242,28 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
 
           {/* Action Buttons */}
           <View style={styles.actionRow}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.actionButton, isInWatchlist && styles.actionButtonActive]}
               onPress={toggleWatchlist}
             >
-              <Ionicons 
-                name={isInWatchlist ? "bookmark" : "bookmark-outline"} 
-                size={18} 
-                color={isInWatchlist ? COLORS.primary : COLORS.text.primary} 
+              <Ionicons
+                name={isInWatchlist ? "bookmark" : "bookmark-outline"}
+                size={18}
+                color={isInWatchlist ? COLORS.primary : COLORS.text.primary}
               />
               <Text style={[styles.actionText, isInWatchlist && styles.actionTextActive]}>
                 {isInWatchlist ? 'In Watchlist' : 'Watchlist'}
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.actionButton, isFavorite && styles.actionButtonActive]}
               onPress={toggleFavorite}
             >
-              <Ionicons 
-                name={isFavorite ? "star" : "star-outline"} 
-                size={18} 
-                color={isFavorite ? COLORS.primary : COLORS.text.primary} 
+              <Ionicons
+                name={isFavorite ? "star" : "star-outline"}
+                size={18}
+                color={isFavorite ? COLORS.primary : COLORS.text.primary}
               />
               <Text style={[styles.actionText, isFavorite && styles.actionTextActive]}>
                 {isFavorite ? 'Favorited' : 'Favorite'}
@@ -229,6 +279,39 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
             <Text style={styles.sectionLabel}>SYNOPSIS</Text>
             <Text style={styles.overview}>{movie.overview || 'No overview available.'}</Text>
           </View>
+
+          {/* Trailer */}
+          {trailerKey && (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>TRAILER</Text>
+              {trailerPlaying ? (
+                <View style={styles.trailerContainer}>
+                  <YoutubePlayer
+                    height={Dimensions.get('window').width * 0.52}
+                    videoId={trailerKey}
+                    play={true}
+                    webViewProps={{ allowsInlineMediaPlayback: true }}
+                  />
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.trailerContainer}
+                  onPress={() => setTrailerPlaying(true)}
+                  activeOpacity={0.8}
+                >
+                  <Image
+                    source={{ uri: `https://img.youtube.com/vi/${trailerKey}/hqdefault.jpg` }}
+                    style={styles.trailerThumbnail}
+                  />
+                  <View style={styles.trailerPlayOverlay}>
+                    <View style={styles.trailerPlayButton}>
+                      <Ionicons name="play" size={28} color="#fff" style={{ marginLeft: 3 }} />
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
         </View>
       </ScrollView>
     </View>
@@ -437,5 +520,93 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.body,
     fontSize: 15,
     lineHeight: 24,
+  },
+  trailerContainer: {
+    borderRadius: BORDER_RADIUS.m,
+    overflow: 'hidden',
+    backgroundColor: COLORS.card,
+    aspectRatio: 16 / 9,
+  },
+  trailerThumbnail: {
+    width: '100%',
+    height: '100%',
+  },
+  trailerPlayOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  trailerPlayButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(200, 165, 85, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+});
+
+// ── Skeleton loader styles ──
+const skelStyles = StyleSheet.create({
+  wrapper: {
+    flex: 1,
+  },
+  backdrop: {
+    height: LAYOUT.window.height * 0.4,
+    backgroundColor: COLORS.card,
+  },
+  content: {
+    paddingHorizontal: SPACING.m,
+    paddingTop: SPACING.l,
+    gap: SPACING.m,
+  },
+  titleLine: {
+    height: 28,
+    width: '70%',
+    backgroundColor: COLORS.card,
+    borderRadius: BORDER_RADIUS.xs,
+  },
+  subtitleLine: {
+    height: 16,
+    width: '45%',
+    backgroundColor: COLORS.card,
+    borderRadius: BORDER_RADIUS.xs,
+  },
+  metaRow: {
+    flexDirection: 'row' as const,
+    gap: SPACING.s,
+  },
+  metaChip: {
+    height: 28,
+    width: 72,
+    backgroundColor: COLORS.card,
+    borderRadius: BORDER_RADIUS.round,
+  },
+  actionRow: {
+    flexDirection: 'row' as const,
+    gap: SPACING.s,
+  },
+  actionBtn: {
+    flex: 1,
+    height: 44,
+    backgroundColor: COLORS.card,
+    borderRadius: BORDER_RADIUS.s,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: COLORS.card,
+  },
+  textBlock: {
+    height: 14,
+    width: '100%',
+    backgroundColor: COLORS.card,
+    borderRadius: BORDER_RADIUS.xs,
+  },
+  textBlockShort: {
+    height: 14,
+    width: '65%',
+    backgroundColor: COLORS.card,
+    borderRadius: BORDER_RADIUS.xs,
   },
 });

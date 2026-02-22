@@ -1,6 +1,7 @@
 import React, { useRef, useCallback } from 'react';
 import { View, PanResponder } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { COLORS } from '../constants/theme';
 
 const STAR_SIZE = 40;
@@ -16,6 +17,7 @@ interface SwipeableStarsProps {
 export const SwipeableStars: React.FC<SwipeableStarsProps> = ({ value, onChange }) => {
     const containerRef = useRef<View>(null);
     const containerX = useRef(0);
+    const lastHapticValue = useRef(0);
 
     const calcRating = useCallback((pageX: number) => {
         const x = pageX - containerX.current;
@@ -37,11 +39,19 @@ export const SwipeableStars: React.FC<SwipeableStarsProps> = ({ value, onChange 
             onPanResponderGrant: (evt) => {
                 containerRef.current?.measureInWindow((x) => {
                     containerX.current = x;
-                    onChange(calcRating(evt.nativeEvent.pageX));
+                    const newVal = calcRating(evt.nativeEvent.pageX);
+                    lastHapticValue.current = newVal;
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    onChange(newVal);
                 });
             },
             onPanResponderMove: (evt) => {
-                onChange(calcRating(evt.nativeEvent.pageX));
+                const newVal = calcRating(evt.nativeEvent.pageX);
+                if (newVal !== lastHapticValue.current) {
+                    lastHapticValue.current = newVal;
+                    Haptics.selectionAsync();
+                }
+                onChange(newVal);
             },
         })
     ).current;

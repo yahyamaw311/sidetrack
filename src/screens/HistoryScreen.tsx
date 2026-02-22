@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,12 +11,15 @@ import {
   TextInput,
   LayoutAnimation,
   RefreshControl,
+  Animated,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, getRatingColor } from '../constants/theme';
 import { tmdbService } from '../services/tmdbService';
 import { StorageProvider } from '../services/StorageProvider';
+import { SwipeableRow } from '../components/SwipeableRow';
 import { WatchedMovie, WatchedEpisode, FavoriteMovie } from '../types';
 
 type TVDrillLevel = 'shows' | 'episodes';
@@ -37,9 +40,47 @@ interface ShowGroup {
 interface HistoryScreenProps {
   onSelectMovie?: (id: number) => void;
   onSelectShow?: (id: number) => void;
+  onOpenWrapped?: () => void;
+  onBackRef?: (fn: (() => boolean) | null) => void;
 }
 
-export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onSelectShow }) => {
+// ── Wrapped Banner ──
+const WrappedBanner: React.FC<{ onPress: () => void }> = ({ onPress }) => {
+  const shimmer = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, { toValue: 1, duration: 2000, useNativeDriver: true }),
+        Animated.timing(shimmer, { toValue: 0, duration: 2000, useNativeDriver: true }),
+      ])
+    ).start();
+  }, [shimmer]);
+
+  const shimmerOpacity = shimmer.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] });
+
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={wrappedStyles.bannerWrap}>
+      <LinearGradient
+        colors={['#1a1a2e', '#302b63', '#0f3460']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={wrappedStyles.bannerGradient}
+      >
+        <Animated.View style={[wrappedStyles.bannerContent, { opacity: shimmerOpacity }]}>
+          <Text style={wrappedStyles.bannerEmoji}>🎬</Text>
+        </Animated.View>
+        <View style={wrappedStyles.bannerTextWrap}>
+          <Text style={wrappedStyles.bannerTitle}>Your Sidetrack Wrapped</Text>
+          <Text style={wrappedStyles.bannerSubtitle}>See your year in movies & TV</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={COLORS.text.muted} />
+      </LinearGradient>
+    </TouchableOpacity>
+  );
+};
+
+export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onSelectShow, onOpenWrapped, onBackRef }) => {
   const [movies, setMovies] = useState<WatchedMovie[]>([]);
   const [episodes, setEpisodes] = useState<WatchedEpisode[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,40 +130,28 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
     loadHistory();
   }, [loadHistory]);
 
-  const handleRemoveMovie = (movieId: number, title: string, watchedDate: string) => {
-    Alert.alert(
-      'Remove Entry',
-      `Remove "${title}" from your log?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            await StorageProvider.removeFromWatchedMovies(movieId, watchedDate);
-            loadHistory();
-          }
-        },
-      ]
-    );
+  // Register back handler with parent
+  useEffect(() => {
+    if (onBackRef) {
+      onBackRef(() => {
+        if (tvLevel === 'episodes') {
+          drillBack();
+          return true;
+        }
+        return false;
+      });
+    }
+    return () => { onBackRef?.(null); };
+  }, [tvLevel, onBackRef]);
+
+  const handleRemoveMovie = async (movieId: number, watchedDate: string) => {
+    await StorageProvider.removeFromWatchedMovies(movieId, watchedDate);
+    loadHistory();
   };
 
-  const handleRemoveEpisode = (episodeId: number, name: string) => {
-    Alert.alert(
-      'Remove Entry',
-      `Remove "${name}" from your log?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            await StorageProvider.removeWatchedEpisode(episodeId);
-            loadHistory();
-          }
-        },
-      ]
-    );
+  const handleRemoveEpisode = async (episodeId: number) => {
+    await StorageProvider.removeWatchedEpisode(episodeId);
+    loadHistory();
   };
 
   const formatDate = (isoDate: string) => {
@@ -220,44 +249,45 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
 
   // ── Render: unified movie row ──
   const renderMovieRow = (item: WatchedMovie, index: number) => (
-    <TouchableOpacity
-      style={styles.row}
-      onPress={() => onSelectMovie?.(item.movieId)}
-      onLongPress={() => handleRemoveMovie(item.movieId, item.title, item.watchedDate)}
-      activeOpacity={0.7}
-    >
-      <View style={styles.timeline}>
-        <View style={[styles.timelineDot, { backgroundColor: getRatingColor(item.rating) }]} />
-        {index < unifiedItems.length - 1 && <View style={styles.timelineLine} />}
-      </View>
-      <Image
-        source={{ uri: tmdbService.getImageUrl(item.posterPath) }}
-        style={styles.poster}
-      />
-      <View style={styles.info}>
-        <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
-        <Text style={styles.meta}>
-          {item.releaseDate?.split('-')[0]} · {item.runtime}m
-        </Text>
-        <View style={styles.bottomRow}>
-          <View style={styles.genreRow}>
-            {item.genres.slice(0, 2).map((genre, idx) => (
-              <Text key={idx} style={styles.genreText}>{genre}</Text>
-            ))}
-          </View>
-          <Text style={styles.dateText}>{formatDate(item.watchedDate)}</Text>
+    <SwipeableRow onDelete={() => handleRemoveMovie(item.movieId, item.watchedDate)} height={80}>
+      <TouchableOpacity
+        style={styles.row}
+        onPress={() => onSelectMovie?.(item.movieId)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.timeline}>
+          <View style={[styles.timelineDot, { backgroundColor: getRatingColor(item.rating) }]} />
+          {index < unifiedItems.length - 1 && <View style={styles.timelineLine} />}
         </View>
-      </View>
-      <View style={styles.ratingCol}>
-        {favoriteMovieIds.has(item.movieId) && (
-          <Ionicons name="star" size={12} color={COLORS.primary} style={{ marginBottom: 2 }} />
-        )}
-        <Text style={[styles.ratingValue, { color: getRatingColor(item.rating) }]}>
-          {item.rating}
-        </Text>
-        <Text style={styles.ratingMax}>/10</Text>
-      </View>
-    </TouchableOpacity>
+        <Image
+          source={{ uri: tmdbService.getImageUrl(item.posterPath) }}
+          style={styles.poster}
+        />
+        <View style={styles.info}>
+          <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
+          <Text style={styles.meta}>
+            {item.releaseDate?.split('-')[0]} · {item.runtime}m
+          </Text>
+          <View style={styles.bottomRow}>
+            <View style={styles.genreRow}>
+              {item.genres.slice(0, 2).map((genre, idx) => (
+                <Text key={idx} style={styles.genreText}>{genre}</Text>
+              ))}
+            </View>
+            <Text style={styles.dateText}>{formatDate(item.watchedDate)}</Text>
+          </View>
+        </View>
+        <View style={styles.ratingCol}>
+          {favoriteMovieIds.has(item.movieId) && (
+            <Ionicons name="star" size={12} color={COLORS.primary} style={{ marginBottom: 2 }} />
+          )}
+          <Text style={[styles.ratingValue, { color: getRatingColor(item.rating) }]}>
+            {item.rating}
+          </Text>
+          <Text style={styles.ratingMax}>/10</Text>
+        </View>
+      </TouchableOpacity>
+    </SwipeableRow>
   );
 
   // ── Render: unified show card ──
@@ -322,49 +352,50 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
   const renderEpisodeRow = ({ item }: { item: WatchedEpisode }) => {
     const starRating = item.rating || 0;
     return (
-      <TouchableOpacity
-        style={tvStyles.episodeRow}
-        onLongPress={() => handleRemoveEpisode(item.episodeId, item.episodeName || 'this episode')}
-        activeOpacity={0.7}
-      >
-        <View style={tvStyles.epNumberWrap}>
-          <Text style={tvStyles.epNumber}>{item.episodeNumber}</Text>
-        </View>
-
-        {item.stillPath ? (
-          <Image
-            source={{ uri: tmdbService.getImageUrl(item.stillPath, 'w300') }}
-            style={tvStyles.epStill}
-          />
-        ) : (
-          <View style={[tvStyles.epStill, tvStyles.epStillPlaceholder]}>
-            <Ionicons name="image-outline" size={16} color={COLORS.text.muted} />
+      <SwipeableRow onDelete={() => handleRemoveEpisode(item.episodeId)} height={64}>
+        <TouchableOpacity
+          style={tvStyles.episodeRow}
+          activeOpacity={0.7}
+        >
+          <View style={tvStyles.epNumberWrap}>
+            <Text style={tvStyles.epNumber}>{item.episodeNumber}</Text>
           </View>
-        )}
 
-        <View style={tvStyles.epInfo}>
-          <Text style={tvStyles.epTitle} numberOfLines={1}>
-            S{item.seasonNumber}E{item.episodeNumber} · {item.episodeName || `Episode ${item.episodeNumber}`}
-          </Text>
-          <View style={tvStyles.epMetaRow}>
-            {starRating > 0 ? (
-              <View style={tvStyles.starsRow}>
-                {renderHalfStars(starRating)}
-              </View>
-            ) : (
-              <Text style={tvStyles.epMetaText}>Not rated</Text>
-            )}
-            <Text style={tvStyles.epDateText}>{formatDate(item.watchedDate)}</Text>
+          {item.stillPath ? (
+            <Image
+              source={{ uri: tmdbService.getImageUrl(item.stillPath, 'w300') }}
+              style={tvStyles.epStill}
+            />
+          ) : (
+            <View style={[tvStyles.epStill, tvStyles.epStillPlaceholder]}>
+              <Ionicons name="image-outline" size={16} color={COLORS.text.muted} />
+            </View>
+          )}
+
+          <View style={tvStyles.epInfo}>
+            <Text style={tvStyles.epTitle} numberOfLines={1}>
+              S{item.seasonNumber}E{item.episodeNumber} · {item.episodeName || `Episode ${item.episodeNumber}`}
+            </Text>
+            <View style={tvStyles.epMetaRow}>
+              {starRating > 0 ? (
+                <View style={tvStyles.starsRow}>
+                  {renderHalfStars(starRating)}
+                </View>
+              ) : (
+                <Text style={tvStyles.epMetaText}>Not rated</Text>
+              )}
+              <Text style={tvStyles.epDateText}>{formatDate(item.watchedDate)}</Text>
+            </View>
           </View>
-        </View>
 
-        {item.liked && (
-          <Ionicons name="heart" size={14} color={COLORS.coral} style={{ marginLeft: SPACING.xs }} />
-        )}
-        {favoriteEpisodeIds.has(item.episodeId) && (
-          <Ionicons name="star" size={14} color={COLORS.primary} style={{ marginLeft: SPACING.xs }} />
-        )}
-      </TouchableOpacity>
+          {item.liked && (
+            <Ionicons name="heart" size={14} color={COLORS.coral} style={{ marginLeft: SPACING.xs }} />
+          )}
+          {favoriteEpisodeIds.has(item.episodeId) && (
+            <Ionicons name="star" size={14} color={COLORS.primary} style={{ marginLeft: SPACING.xs }} />
+          )}
+        </TouchableOpacity>
+      </SwipeableRow>
     );
   };
 
@@ -511,7 +542,10 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
               />
             }
             ListHeaderComponent={
-              <Text style={styles.longPressHint}>Long-press an entry to remove it</Text>
+              <>
+                {onOpenWrapped && <WrappedBanner onPress={onOpenWrapped} />}
+                <Text style={styles.longPressHint}>Long-press an entry to remove it</Text>
+              </>
             }
           />
         )}
@@ -706,6 +740,47 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: SPACING.xs,
     marginBottom: SPACING.xs,
+  },
+});
+
+// ── Wrapped Banner styles ──
+const wrappedStyles = StyleSheet.create({
+  bannerWrap: {
+    marginBottom: SPACING.m,
+    borderRadius: BORDER_RADIUS.m,
+    overflow: 'hidden',
+  },
+  bannerGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.m,
+    paddingHorizontal: SPACING.m,
+    gap: SPACING.m,
+  },
+  bannerContent: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  bannerEmoji: {
+    fontSize: 22,
+  },
+  bannerTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  bannerTitle: {
+    color: COLORS.text.primary,
+    fontFamily: FONTS.display,
+    fontSize: 17,
+  },
+  bannerSubtitle: {
+    color: COLORS.text.secondary,
+    fontFamily: FONTS.body,
+    fontSize: 12,
   },
 });
 
