@@ -25,13 +25,14 @@ export const MainNavigation = () => {
   };
 
   const handleSelectShow = (show: SearchResult) => {
+    if (show.media_type === 'person') return; // Ignore person results
     setSelectedShow(show);
   };
 
   const handleSelectFromWatchlist = (id: number, type: 'tv' | 'movie') => {
     setActiveTab('Explore');
-    setSelectedShow({ 
-      id, 
+    setSelectedShow({
+      id,
       media_type: type,
       name: type === 'tv' ? '' : undefined,
       title: type === 'movie' ? '' : undefined,
@@ -44,8 +45,8 @@ export const MainNavigation = () => {
 
   const handleSelectFromHistory = (id: number) => {
     setActiveTab('Explore');
-    setSelectedShow({ 
-      id, 
+    setSelectedShow({
+      id,
       media_type: 'movie',
       title: '',
       poster_path: null,
@@ -81,7 +82,7 @@ export const MainNavigation = () => {
           }
           return <EpisodeDetail route={{ params: { tvId: selectedShow.id, seasonNumber: 1, episodeNumber: 1 } }} onBack={handleBack} />;
         }
-        return <DiscoveryScreen onSelectShow={handleSelectShow} />; 
+        return <DiscoveryScreen onSelectShow={handleSelectShow} />;
       case 'Watchlist':
         return <WatchlistScreen onSelectShow={handleSelectFromWatchlist} />;
       case 'Log':
@@ -95,28 +96,28 @@ export const MainNavigation = () => {
 
       <BlurView intensity={80} tint="dark" style={styles.navBar}>
         <View style={styles.navInner}>
-          <TabButton 
-            icon="compass-outline" 
-            activeIcon="compass" 
-            label="Explore" 
-            isActive={activeTab === 'Explore'} 
-            onPress={() => handleTabChange('Explore')} 
-          />
-          
-          <TabButton 
-            icon="bookmark-outline" 
-            activeIcon="bookmark" 
-            label="Watchlist" 
-            isActive={activeTab === 'Watchlist'} 
-            onPress={() => handleTabChange('Watchlist')} 
+          <TabButton
+            icon="compass-outline"
+            activeIcon="compass"
+            label="Explore"
+            isActive={activeTab === 'Explore'}
+            onPress={() => handleTabChange('Explore')}
           />
 
-          <TabButton 
-            icon="journal-outline" 
-            activeIcon="journal" 
-            label="Log" 
-            isActive={activeTab === 'Log'} 
-            onPress={() => handleTabChange('Log')} 
+          <TabButton
+            icon="bookmark-outline"
+            activeIcon="bookmark"
+            label="Watchlist"
+            isActive={activeTab === 'Watchlist'}
+            onPress={() => handleTabChange('Watchlist')}
+          />
+
+          <TabButton
+            icon="journal-outline"
+            activeIcon="journal"
+            label="Log"
+            isActive={activeTab === 'Log'}
+            onPress={() => handleTabChange('Log')}
           />
         </View>
       </BlurView>

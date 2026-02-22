@@ -1,87 +1,19 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ImageBackground, Platform, ActivityIndicator, Modal, TextInput, Keyboard, PanResponder, GestureResponderEvent, LayoutChangeEvent, LayoutAnimation } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ImageBackground, Platform, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, LAYOUT, getRatingColor } from '../constants/theme';
 import { tmdbService } from '../services/tmdbService';
 import { StorageProvider } from '../services/StorageProvider';
-import { Episode, TVShowDetail, SeasonDetail, SeasonSummary, WatchedEpisode, EpisodeDetailData } from '../types';
-import { DatePickerModal } from '../components/DatePicker';
+import { Episode, TVShowDetail, SeasonSummary, WatchedEpisode } from '../types';
+import { WatchedEpisodeModal } from '../components/WatchedEpisodeModal';
+import { SeasonBrowser } from '../components/SeasonBrowser';
 
 interface EpisodeDetailProps {
   route?: { params: { tvId: number; seasonNumber: number; episodeNumber: number } };
   onBack?: () => void;
 }
-
-const STAR_SIZE = 40;
-const STAR_GAP = 4;
-const STAR_COUNT = 5;
-const STAR_TOTAL_WIDTH = STAR_COUNT * STAR_SIZE + (STAR_COUNT - 1) * STAR_GAP;
-
-const SwipeableStars: React.FC<{ value: number; onChange: (val: number) => void }> = ({ value, onChange }) => {
-  const containerRef = useRef<View>(null);
-  const containerX = useRef(0);
-
-  const calcRating = useCallback((pageX: number) => {
-    const x = pageX - containerX.current;
-    if (x <= 0) return 0;
-    if (x >= STAR_TOTAL_WIDTH) return 5;
-    // Each star occupies STAR_SIZE + STAR_GAP (except the last)
-    const starSlot = STAR_SIZE + STAR_GAP;
-    const starIndex = Math.floor(x / starSlot);
-    const withinStar = x - starIndex * starSlot;
-    if (withinStar <= STAR_SIZE / 2) {
-      return starIndex + 0.5;
-    }
-    return starIndex + 1;
-  }, []);
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (evt) => {
-        containerRef.current?.measureInWindow((x) => {
-          containerX.current = x;
-          onChange(calcRating(evt.nativeEvent.pageX));
-        });
-      },
-      onPanResponderMove: (evt) => {
-        onChange(calcRating(evt.nativeEvent.pageX));
-      },
-    })
-  ).current;
-
-  const renderStar = (index: number) => {
-    const starNum = index + 1;
-    let name: 'star' | 'star-half' | 'star-outline' = 'star-outline';
-    if (value >= starNum) {
-      name = 'star';
-    } else if (value >= starNum - 0.5) {
-      name = 'star-half';
-    }
-    const filled = value >= starNum - 0.5;
-    return (
-      <Ionicons
-        key={index}
-        name={name}
-        size={STAR_SIZE}
-        color={filled ? '#4ADE80' : COLORS.text.muted}
-      />
-    );
-  };
-
-  return (
-    <View
-      ref={containerRef}
-      style={{ flexDirection: 'row', gap: STAR_GAP }}
-      {...panResponder.panHandlers}
-    >
-      {[0, 1, 2, 3, 4].map(renderStar)}
-    </View>
-  );
-};
 
 export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) => {
   const { tvId, seasonNumber: initialSeason, episodeNumber: initialEpisode } = route?.params || { tvId: 1399, seasonNumber: 1, episodeNumber: 1 };
@@ -91,32 +23,15 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
   const [isFavorite, setIsFavorite] = useState(false);
   const [isInWatchlist, setIsInWatchlist] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [imdbRating, setImdbRating] = useState<string | null>(null);
   const [imdbVotes, setImdbVotes] = useState<string | null>(null);
   const [showImdbRating, setShowImdbRating] = useState<string | null>(null);
   const [showImdbVotes, setShowImdbVotes] = useState<string | null>(null);
 
-  // Season/Episode browser state
-  const [expandedSeason, setExpandedSeason] = useState<number | null>(null);
-  const [seasonEpisodes, setSeasonEpisodes] = useState<Record<number, Episode[]>>({});
-  const [loadingSeason, setLoadingSeason] = useState<number | null>(null);
-  const [episodeImdbRatings, setEpisodeImdbRatings] = useState<Record<string, { rating: string; votes: string }>>({});
-
-  // Expanded episode detail state
-  const [expandedEpisodeId, setExpandedEpisodeId] = useState<number | null>(null);
-  const [episodeDetails, setEpisodeDetails] = useState<Record<number, EpisodeDetailData>>({});
-  const [loadingEpisodeDetail, setLoadingEpisodeDetail] = useState<number | null>(null);
-  // Watched episode dialog state
+  // Watched modal state
   const [watchedModalVisible, setWatchedModalVisible] = useState(false);
   const [watchedEpisode, setWatchedEpisode] = useState<Episode | null>(null);
-  const [watchedRating, setWatchedRating] = useState(0);
-  const [watchedLiked, setWatchedLiked] = useState(false);
-  const [watchedReview, setWatchedReview] = useState('');
-  const [watchedTags, setWatchedTags] = useState('');
-  const [watchedRewatch, setWatchedRewatch] = useState(false);
-  const [watchedNoSpoilers, setWatchedNoSpoilers] = useState(false);
-  const [watchedDate, setWatchedDate] = useState<Date>(new Date());
-  const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [watchedEpisodeIds, setWatchedEpisodeIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
@@ -125,11 +40,12 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
 
   const loadData = async () => {
     setLoading(true);
+    setLoadError(false);
     const [seasonData, showData] = await Promise.all([
       tmdbService.getSeasonDetails(tvId, initialSeason),
       tmdbService.getTVShowDetails(tvId)
     ]);
-    
+
     if (showData) {
       setShow(showData);
       const watchlist = await StorageProvider.getWatchlist();
@@ -145,13 +61,12 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
         }
       }
     }
-    
+
     if (seasonData) {
       const ep = seasonData.episodes.find(e => e.episode_number === initialEpisode);
       setEpisode(ep || null);
-      // Cache episodes for the initial season
-      setSeasonEpisodes(prev => ({ ...prev, [initialSeason]: seasonData.episodes }));
-      
+
+
       if (ep) {
         const fav = await StorageProvider.isEpisodeFavorite(ep.id);
         setIsFavorite(fav);
@@ -164,6 +79,9 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
         }
       }
     }
+    if (!showData && !seasonData) {
+      setLoadError(true);
+    }
     setLoading(false);
 
     // Load watched episode IDs
@@ -172,79 +90,15 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
     setWatchedEpisodeIds(ids);
   };
 
-  const toggleSeason = async (seasonNumber: number) => {
-    if (expandedSeason === seasonNumber) {
-      setExpandedSeason(null);
-      return;
-    }
-    setExpandedSeason(seasonNumber);
-
-    // Load episodes if not cached
-    if (!seasonEpisodes[seasonNumber]) {
-      setLoadingSeason(seasonNumber);
-      const data = await tmdbService.getSeasonDetails(tvId, seasonNumber);
-      if (data) {
-        setSeasonEpisodes(prev => ({ ...prev, [seasonNumber]: data.episodes }));
-        // Fetch IMDb ratings for all episodes in background
-        fetchEpisodeImdbRatings(seasonNumber, data.episodes);
-      }
-      setLoadingSeason(null);
-    } else if (!episodeImdbRatings[`${seasonNumber}-1`]) {
-      // Episodes cached but IMDb ratings not yet fetched
-      fetchEpisodeImdbRatings(seasonNumber, seasonEpisodes[seasonNumber]);
-    }
-  };
-
-  const fetchEpisodeImdbRatings = async (seasonNumber: number, episodes: Episode[]) => {
-    // Fetch IMDb ratings for all episodes in parallel
-    const promises = episodes.map(async (ep) => {
-      const key = `${seasonNumber}-${ep.episode_number}`;
-      if (episodeImdbRatings[key]) return; // Already cached
-      const result = await tmdbService.getIMDbEpisodeRating(tvId, seasonNumber, ep.episode_number);
-      if (result) {
-        setEpisodeImdbRatings(prev => ({
-          ...prev,
-          [key]: { rating: result.imdbRating, votes: result.imdbVotes },
-        }));
-      }
-    });
-    await Promise.all(promises);
-  };
-
-  const toggleEpisodeExpand = async (ep: Episode) => {
-    LayoutAnimation.configureNext(LayoutAnimation.create(300, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity));
-    if (expandedEpisodeId === ep.id) {
-      setExpandedEpisodeId(null);
-      return;
-    }
-    setExpandedEpisodeId(ep.id);
-    // Also select this episode for the main display
-    selectEpisode(ep);
-
-    // Fetch full episode details if not cached
-    if (!episodeDetails[ep.id]) {
-      setLoadingEpisodeDetail(ep.id);
-      const detail = await tmdbService.getEpisodeDetails(tvId, ep.season_number, ep.episode_number);
-      if (detail) {
-        setEpisodeDetails(prev => ({ ...prev, [ep.id]: detail }));
-      }
-      setLoadingEpisodeDetail(null);
-    }
-  };
-
-  const openWatchedModal = (ep: Episode) => {
+  const openWatchedModal = useCallback((ep: Episode) => {
     setWatchedEpisode(ep);
-    setWatchedRating(0);
-    setWatchedLiked(false);
-    setWatchedReview('');
-    setWatchedTags('');
-    setWatchedRewatch(false);
-    setWatchedNoSpoilers(false);
-    setWatchedDate(new Date());
     setWatchedModalVisible(true);
-  };
+  }, []);
 
-  const handleConfirmWatched = async () => {
+  const handleConfirmWatched = async (data: {
+    rating: number; liked: boolean; review: string; tags: string;
+    rewatch: boolean; noSpoilers: boolean; watchedDate: Date;
+  }) => {
     if (!watchedEpisode || !show) return;
 
     const entry: WatchedEpisode = {
@@ -255,17 +109,44 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
       stillPath: watchedEpisode.still_path,
       seasonNumber: watchedEpisode.season_number,
       episodeNumber: watchedEpisode.episode_number,
-      rating: watchedRating,
-      watchedDate: watchedDate.toISOString(),
-      liked: watchedLiked,
-      review: watchedReview.trim() || undefined,
-      tags: watchedTags.trim() ? watchedTags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
-      rewatch: watchedRewatch,
-      noSpoilers: watchedNoSpoilers,
+      rating: data.rating,
+      watchedDate: data.watchedDate.toISOString(),
+      liked: data.liked,
+      review: data.review.trim() || undefined,
+      tags: data.tags.trim() ? data.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
+      rewatch: data.rewatch,
+      noSpoilers: data.noSpoilers,
     };
 
     await StorageProvider.markEpisodeAsWatched(entry);
     setWatchedEpisodeIds(prev => new Set(prev).add(watchedEpisode.id));
+
+    // Auto-add to Currently Watching
+    await StorageProvider.addToCurrentlyWatching({
+      seriesId: tvId,
+      name: show?.name || '',
+      posterPath: show?.poster_path || null,
+      lastUpdated: new Date().toISOString(),
+    });
+
+    // Check if this was the last episode of the last season → auto-remove if fully watched
+    const realSeasons = show.seasons.filter(s => s.season_number > 0);
+    const lastSeason = realSeasons[realSeasons.length - 1];
+    if (
+      lastSeason &&
+      watchedEpisode.season_number === lastSeason.season_number &&
+      watchedEpisode.episode_number === lastSeason.episode_count
+    ) {
+      const seasonMap: Record<number, number> = {};
+      for (const s of realSeasons) {
+        seasonMap[s.season_number] = s.episode_count;
+      }
+      const fullyWatched = await StorageProvider.isShowFullyWatched(tvId, seasonMap);
+      if (fullyWatched) {
+        await StorageProvider.removeFromCurrentlyWatching(tvId);
+      }
+    }
+
     setWatchedModalVisible(false);
     setWatchedEpisode(null);
   };
@@ -291,7 +172,7 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
 
   const toggleWatchlist = async () => {
     if (!show) return;
-    
+
     if (isInWatchlist) {
       await StorageProvider.removeFromWatchlist(tvId);
       setIsInWatchlist(false);
@@ -325,12 +206,33 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
   // Filter out specials (season 0) from the seasons list
   const displaySeasons = show?.seasons.filter(s => s.season_number > 0) || [];
 
-  if (loading || !episode || !show) {
+  if (loading) {
     return (
       <View style={styles.container}>
         <View style={styles.centered}>
           <ActivityIndicator color={COLORS.primary} size="large" />
         </View>
+      </View>
+    );
+  }
+
+  if (loadError || !episode || !show) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.centered}>
+          <Ionicons name="cloud-offline-outline" size={40} color={COLORS.text.muted} />
+          <Text style={styles.loadingText}>Failed to load show</Text>
+          <TouchableOpacity onPress={loadData} style={styles.retryButton}>
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+        {onBack && (
+          <SafeAreaView style={styles.backSafe}>
+            <TouchableOpacity onPress={onBack} style={styles.backButton}>
+              <Ionicons name="chevron-back" size={24} color={COLORS.text.primary} />
+            </TouchableOpacity>
+          </SafeAreaView>
+        )}
       </View>
     );
   }
@@ -348,28 +250,6 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
             locations={[0, 0.6, 1]}
             style={styles.backdropGradient}
           />
-          
-          {/* Episode tag + rating on backdrop */}
-          <View style={styles.backdropBottom}>
-            <View style={styles.episodeTag}>
-              <Text style={styles.episodeTagText}>S{episode.season_number} · E{episode.episode_number}</Text>
-            </View>
-            {imdbRating ? (
-              <View style={styles.imdbBadge}>
-                <Text style={styles.imdbLabel}>IMDb</Text>
-                <Text style={[styles.imdbScore, { color: getRatingColor(parseFloat(imdbRating)) }]}>
-                  {imdbRating}
-                </Text>
-                {imdbVotes && <Text style={styles.imdbVotes}>{imdbVotes}</Text>}
-              </View>
-            ) : (
-              <View style={[styles.ratingCircle, { borderColor: getRatingColor(episode.vote_average) }]}>
-                <Text style={[styles.ratingCircleText, { color: getRatingColor(episode.vote_average) }]}>
-                  {episode.vote_average.toFixed(1)}
-                </Text>
-              </View>
-            )}
-          </View>
         </ImageBackground>
 
         {/* Content */}
@@ -396,28 +276,28 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
 
           {/* Action Buttons */}
           <View style={styles.actionRow}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.actionButton, isInWatchlist && styles.actionButtonActive]}
               onPress={toggleWatchlist}
             >
-              <Ionicons 
-                name={isInWatchlist ? "bookmark" : "bookmark-outline"} 
-                size={18} 
-                color={isInWatchlist ? COLORS.primary : COLORS.text.primary} 
+              <Ionicons
+                name={isInWatchlist ? "bookmark" : "bookmark-outline"}
+                size={18}
+                color={isInWatchlist ? COLORS.primary : COLORS.text.primary}
               />
               <Text style={[styles.actionText, isInWatchlist && styles.actionTextActive]}>
                 {isInWatchlist ? 'In Watchlist' : 'Watchlist'}
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.actionButton, isFavorite && styles.actionButtonActive]}
               onPress={toggleFavorite}
             >
-              <Ionicons 
-                name={isFavorite ? "star" : "star-outline"} 
-                size={18} 
-                color={isFavorite ? COLORS.primary : COLORS.text.primary} 
+              <Ionicons
+                name={isFavorite ? "star" : "star-outline"}
+                size={18}
+                color={isFavorite ? COLORS.primary : COLORS.text.primary}
               />
               <Text style={[styles.actionText, isFavorite && styles.actionTextActive]}>
                 {isFavorite ? 'Favorited' : 'Favorite'}
@@ -430,8 +310,8 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
 
           {/* Overview */}
           <View style={styles.section}>
-            <Text style={styles.sectionLabel}>EPISODE OVERVIEW</Text>
-            <Text style={styles.overview}>{episode.overview || 'No overview available for this episode.'}</Text>
+            <Text style={styles.sectionLabel}>ABOUT</Text>
+            <Text style={styles.overview}>{show.overview || 'No overview available.'}</Text>
           </View>
 
           {/* Show Info */}
@@ -461,200 +341,15 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
           <View style={styles.divider} />
 
           {/* Seasons & Episodes Browser */}
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>SEASONS & EPISODES</Text>
-            
-            {displaySeasons.map((season) => {
-              const isExpanded = expandedSeason === season.season_number;
-              const episodes = seasonEpisodes[season.season_number];
-              const isLoading = loadingSeason === season.season_number;
-
-              return (
-                <View key={season.id} style={styles.seasonBlock}>
-                  {/* Season header */}
-                  <TouchableOpacity
-                    style={styles.seasonHeader}
-                    onPress={() => toggleSeason(season.season_number)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.seasonHeaderLeft}>
-                      <Text style={styles.seasonTitle}>{season.name}</Text>
-                      <Text style={styles.seasonMeta}>
-                        {season.episode_count} episode{season.episode_count !== 1 ? 's' : ''}
-                        {season.air_date ? ` · ${season.air_date.split('-')[0]}` : ''}
-                      </Text>
-                    </View>
-                    <View style={styles.seasonChevron}>
-                      {isLoading ? (
-                        <ActivityIndicator size="small" color={COLORS.primary} />
-                      ) : (
-                        <Ionicons 
-                          name={isExpanded ? "chevron-up" : "chevron-down"} 
-                          size={18} 
-                          color={COLORS.text.muted} 
-                        />
-                      )}
-                    </View>
-                  </TouchableOpacity>
-
-                  {/* Episodes list */}
-                  {isExpanded && episodes && (
-                    <View style={styles.episodesList}>
-                      {episodes.map((ep) => {
-                        const isSelected = episode.id === ep.id;
-                        const isEpExpanded = expandedEpisodeId === ep.id;
-                        const epDetail = episodeDetails[ep.id];
-                        const isLoadingDetail = loadingEpisodeDetail === ep.id;
-                        const imdbKey = `${ep.season_number}-${ep.episode_number}`;
-                        const epImdb = episodeImdbRatings[imdbKey];
-                        const ratingVal = parseFloat(epImdb?.rating || String(ep.vote_average));
-
-                        return (
-                          <View key={ep.id}>
-                            <TouchableOpacity
-                              style={[styles.episodeRow, isSelected && styles.episodeRowActive]}
-                              onPress={() => toggleEpisodeExpand(ep)}
-                              activeOpacity={0.7}
-                            >
-                              {/* Top row: number + thumb + title/meta */}
-                              <View style={styles.epTopRow}>
-                                <View style={styles.episodeNumberWrap}>
-                                  <Text style={[styles.episodeNumber, isSelected && styles.episodeNumberActive]}>
-                                    {ep.episode_number}
-                                  </Text>
-                                </View>
-                                {!isEpExpanded && (
-                                  ep.still_path ? (
-                                    <Image
-                                      source={{ uri: tmdbService.getImageUrl(ep.still_path, 'w300') }}
-                                      style={styles.episodeThumb}
-                                    />
-                                  ) : (
-                                    <View style={[styles.episodeThumb, styles.episodeThumbPlaceholder]}>
-                                      <Ionicons name="image-outline" size={16} color={COLORS.text.muted} />
-                                    </View>
-                                  )
-                                )}
-                                <View style={styles.episodeInfo}>
-                                  <Text style={[styles.episodeTitle, isSelected && styles.episodeTitleActive]} numberOfLines={isEpExpanded ? undefined : 2}>
-                                    {ep.name}
-                                  </Text>
-                                  {!isEpExpanded && (
-                                    <View style={styles.episodeMetaRow}>
-                                      {ep.air_date ? <Text style={styles.episodeMetaText}>{ep.air_date}</Text> : null}
-                                      {ep.runtime ? (
-                                        <><View style={styles.epMetaDot} /><Text style={styles.episodeMetaText}>{ep.runtime}m</Text></>
-                                      ) : null}
-                                      {(epImdb || ep.vote_average > 0) && (
-                                        <>
-                                          <View style={styles.epMetaDot} />
-                                          <View style={styles.episodeRatingRow}>
-                                            <Ionicons name="star" size={10} color={getRatingColor(ratingVal)} />
-                                            <Text style={[styles.episodeMetaText, { color: getRatingColor(ratingVal) }]}>
-                                              {epImdb?.rating || ep.vote_average.toFixed(1)}
-                                            </Text>
-                                          </View>
-                                        </>
-                                      )}
-                                    </View>
-                                  )}
-                                </View>
-                                <Ionicons
-                                  name={isEpExpanded ? "chevron-up" : "chevron-down"}
-                                  size={14}
-                                  color={COLORS.text.muted}
-                                  style={{ marginLeft: 2 }}
-                                />
-                                <TouchableOpacity
-                                  style={[
-                                    styles.epWatchButton,
-                                    watchedEpisodeIds.has(ep.id) && styles.epWatchButtonDone,
-                                  ]}
-                                  onPress={(e) => {
-                                    e.stopPropagation();
-                                    if (!watchedEpisodeIds.has(ep.id)) {
-                                      openWatchedModal(ep);
-                                    }
-                                  }}
-                                  activeOpacity={0.7}
-                                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                >
-                                  <Ionicons
-                                    name={watchedEpisodeIds.has(ep.id) ? "checkmark" : "add"}
-                                    size={14}
-                                    color={watchedEpisodeIds.has(ep.id) ? COLORS.teal : COLORS.text.muted}
-                                  />
-                                </TouchableOpacity>
-                              </View>
-                            </TouchableOpacity>
-
-                            {/* Expanded episode detail */}
-                            {isEpExpanded && (
-                              <View style={styles.epExpandedWrap}>
-                                {isLoadingDetail ? (
-                                  <View style={styles.epExpandedLoading}>
-                                    <ActivityIndicator size="small" color={COLORS.primary} />
-                                  </View>
-                                ) : epDetail ? (
-                                  <>
-                                    {/* Centered still image */}
-                                    {ep.still_path && (
-                                      <View style={styles.epExpandedImageWrap}>
-                                        <Image
-                                          source={{ uri: tmdbService.getImageUrl(ep.still_path, 'w780') }}
-                                          style={styles.epExpandedImage}
-                                        />
-                                      </View>
-                                    )}
-
-                                    {/* Rating + Votes + Runtime bar */}
-                                    <View style={styles.epExpandedStats}>
-                                      {(epImdb || ep.vote_average > 0) && (
-                                        <View style={styles.epStatItem}>
-                                          <Ionicons name="star" size={14} color={getRatingColor(ratingVal)} />
-                                          <Text style={[styles.epStatValue, { color: getRatingColor(ratingVal) }]}>
-                                            {epImdb?.rating || ep.vote_average.toFixed(1)}
-                                          </Text>
-                                          {(epImdb?.votes || epDetail.vote_count) && (
-                                            <Text style={styles.epStatLabel}>
-                                              ({epImdb?.votes || epDetail.vote_count?.toLocaleString()})
-                                            </Text>
-                                          )}
-                                        </View>
-                                      )}
-                                      {ep.runtime ? (
-                                        <View style={styles.epStatItem}>
-                                          <Ionicons name="time-outline" size={13} color={COLORS.text.muted} />
-                                          <Text style={styles.epStatLabel}>{ep.runtime} min</Text>
-                                        </View>
-                                      ) : null}
-                                      {ep.air_date ? (
-                                        <View style={styles.epStatItem}>
-                                          <Ionicons name="calendar-outline" size={13} color={COLORS.text.muted} />
-                                          <Text style={styles.epStatLabel}>{ep.air_date}</Text>
-                                        </View>
-                                      ) : null}
-                                    </View>
-
-                                    {/* Overview */}
-                                    {ep.overview ? (
-                                      <Text style={styles.epExpandedOverview}>{ep.overview}</Text>
-                                    ) : null}
-                                  </>
-                                ) : (
-                                  <Text style={styles.epExpandedOverview}>No additional details available.</Text>
-                                )}
-                              </View>
-                            )}
-                          </View>
-                        );
-                      })}
-                    </View>
-                  )}
-                </View>
-              );
-            })}
-          </View>
+          <SeasonBrowser
+            tvId={tvId}
+            displaySeasons={displaySeasons}
+            currentEpisode={episode}
+            watchedEpisodeIds={watchedEpisodeIds}
+            onSelectEpisode={selectEpisode}
+            onOpenWatchedModal={openWatchedModal}
+            onWatchedIdsChange={setWatchedEpisodeIds}
+          />
         </View>
       </ScrollView>
 
@@ -668,151 +363,13 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
       )}
 
       {/* Watched Episode Modal */}
-      <Modal
+      <WatchedEpisodeModal
         visible={watchedModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setWatchedModalVisible(false)}
-      >
-        <View style={watchedStyles.overlay}>
-          <View style={watchedStyles.container}>
-            {/* Header */}
-            <View style={watchedStyles.header}>
-              <TouchableOpacity onPress={() => setWatchedModalVisible(false)} style={watchedStyles.headerBtn}>
-                <Ionicons name="close" size={22} color={COLORS.text.primary} />
-              </TouchableOpacity>
-              <Text style={watchedStyles.headerTitle}>I Watched</Text>
-              <TouchableOpacity onPress={handleConfirmWatched} style={watchedStyles.headerBtn}>
-                <Ionicons name="checkmark" size={22} color={COLORS.text.primary} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={watchedStyles.body} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              {/* Episode info */}
-              {watchedEpisode && (
-                <View style={watchedStyles.episodeInfo}>
-                  {watchedEpisode.still_path ? (
-                    <Image
-                      source={{ uri: tmdbService.getImageUrl(watchedEpisode.still_path, 'w300') }}
-                      style={watchedStyles.episodeThumb}
-                    />
-                  ) : (
-                    <View style={[watchedStyles.episodeThumb, watchedStyles.thumbPlaceholder]}>
-                      <Ionicons name="film-outline" size={20} color={COLORS.text.muted} />
-                    </View>
-                  )}
-                  <View style={watchedStyles.episodeText}>
-                    <Text style={watchedStyles.episodeTitle} numberOfLines={2}>
-                      {show?.name} — S{watchedEpisode.season_number}E{watchedEpisode.episode_number}
-                    </Text>
-                    <Text style={watchedStyles.episodeSub} numberOfLines={1}>{watchedEpisode.name}</Text>
-                  </View>
-                </View>
-              )}
-
-              {/* Date */}
-              <TouchableOpacity style={watchedStyles.row} onPress={() => setDatePickerVisible(true)} activeOpacity={0.7}>
-                <Text style={watchedStyles.rowLabel}>Date</Text>
-                <View style={watchedStyles.dateRight}>
-                  <Ionicons name="calendar-outline" size={16} color={COLORS.text.secondary} />
-                  <Text style={watchedStyles.dateText}>{formatDate(watchedDate)}</Text>
-                  <Ionicons name="chevron-forward" size={16} color={COLORS.text.muted} />
-                </View>
-              </TouchableOpacity>
-              <View style={watchedStyles.separator} />
-
-              <DatePickerModal
-                visible={datePickerVisible}
-                date={watchedDate}
-                onConfirm={(d) => { setWatchedDate(d); setDatePickerVisible(false); }}
-                onCancel={() => setDatePickerVisible(false)}
-              />
-
-              {/* Star rating + Like */}
-              <View style={watchedStyles.ratingLikeRow}>
-                <View style={watchedStyles.starsWrap}>
-                  <SwipeableStars value={watchedRating} onChange={setWatchedRating} />
-                  <Text style={watchedStyles.starsLabel}>{watchedRating > 0 ? 'Rated' : 'Rate'}</Text>
-                </View>
-                <TouchableOpacity
-                  style={watchedStyles.likeWrap}
-                  onPress={() => setWatchedLiked(!watchedLiked)}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name={watchedLiked ? "heart" : "heart-outline"}
-                    size={36}
-                    color={watchedLiked ? COLORS.coral : COLORS.text.muted}
-                  />
-                  <Text style={watchedStyles.likeLabel}>Like</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={watchedStyles.separator} />
-
-              {/* Review */}
-              <TextInput
-                style={watchedStyles.reviewInput}
-                placeholder="Add review..."
-                placeholderTextColor={COLORS.text.muted}
-                value={watchedReview}
-                onChangeText={setWatchedReview}
-                multiline
-                textAlignVertical="top"
-              />
-              <View style={watchedStyles.separator} />
-
-              {/* Tags */}
-              <TextInput
-                style={watchedStyles.tagsInput}
-                placeholder="Add tags..."
-                placeholderTextColor={COLORS.text.muted}
-                value={watchedTags}
-                onChangeText={setWatchedTags}
-              />
-              <View style={watchedStyles.separator} />
-
-              {/* Toggles */}
-              <View style={watchedStyles.toggleRow}>
-                <TouchableOpacity
-                  style={watchedStyles.toggleItem}
-                  onPress={() => setWatchedRewatch(!watchedRewatch)}
-                  activeOpacity={0.7}
-                >
-                  <View style={watchedStyles.toggleIconWrap}>
-                    {watchedRewatch && (
-                      <View style={watchedStyles.toggleCheck}>
-                        <Ionicons name="checkmark-circle" size={16} color={COLORS.teal} />
-                      </View>
-                    )}
-                    <Ionicons name="eye-outline" size={28} color={watchedRewatch ? COLORS.text.primary : COLORS.text.muted} />
-                  </View>
-                  <Text style={[watchedStyles.toggleLabel, watchedRewatch && watchedStyles.toggleLabelActive]}>
-                    I've seen this{'\n'}before
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={watchedStyles.toggleItem}
-                  onPress={() => setWatchedNoSpoilers(!watchedNoSpoilers)}
-                  activeOpacity={0.7}
-                >
-                  <View style={watchedStyles.toggleIconWrap}>
-                    {watchedNoSpoilers && (
-                      <View style={watchedStyles.toggleCheck}>
-                        <Ionicons name="checkmark-circle" size={16} color={COLORS.teal} />
-                      </View>
-                    )}
-                    <Ionicons name="shield-outline" size={28} color={watchedNoSpoilers ? COLORS.text.primary : COLORS.text.muted} />
-                  </View>
-                  <Text style={[watchedStyles.toggleLabel, watchedNoSpoilers && watchedStyles.toggleLabelActive]}>
-                    No spoilers
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+        episode={watchedEpisode}
+        show={show}
+        onClose={() => { setWatchedModalVisible(false); setWatchedEpisode(null); }}
+        onConfirm={handleConfirmWatched}
+      />
     </View>
   );
 };
@@ -830,12 +387,26 @@ const styles = StyleSheet.create({
   loadingText: {
     color: COLORS.text.muted,
     fontFamily: FONTS.body,
+    marginTop: SPACING.s,
+  },
+  retryButton: {
+    paddingHorizontal: SPACING.l,
+    paddingVertical: SPACING.s,
+    borderRadius: BORDER_RADIUS.s,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    marginTop: SPACING.s,
+  },
+  retryText: {
+    color: COLORS.primary,
+    fontFamily: FONTS.bodyMedium,
+    fontSize: 14,
   },
   scroll: {
     flex: 1,
   },
   backdrop: {
-    height: LAYOUT.window.height * 0.5,
+    height: LAYOUT.window.height * 0.35,
     justifyContent: 'flex-end',
   },
   backdropGradient: {
@@ -1054,363 +625,5 @@ const styles = StyleSheet.create({
   },
   statusEnded: {
     backgroundColor: COLORS.text.muted,
-  },
-  // Season & Episode browser styles
-  seasonBlock: {
-    marginBottom: SPACING.xs,
-    borderRadius: BORDER_RADIUS.m,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    backgroundColor: COLORS.card,
-  },
-  seasonHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING.m,
-    paddingVertical: 14,
-  },
-  seasonHeaderLeft: {
-    flex: 1,
-    gap: 2,
-  },
-  seasonTitle: {
-    color: COLORS.text.primary,
-    fontFamily: FONTS.heading,
-    fontSize: 15,
-  },
-  seasonMeta: {
-    color: COLORS.text.muted,
-    fontFamily: FONTS.body,
-    fontSize: 12,
-  },
-  seasonChevron: {
-    width: 28,
-    height: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  episodesList: {
-    borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
-  },
-  episodeRow: {
-    paddingHorizontal: SPACING.m,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
-  },
-  episodeRowActive: {
-    backgroundColor: COLORS.primaryMuted,
-  },
-  epTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  episodeNumberWrap: {
-    width: 24,
-    alignItems: 'center',
-  },
-  episodeNumber: {
-    color: COLORS.text.muted,
-    fontFamily: FONTS.mono,
-    fontSize: 13,
-  },
-  episodeNumberActive: {
-    color: COLORS.primary,
-    fontFamily: FONTS.heading,
-  },
-  episodeThumb: {
-    width: 80,
-    height: 45,
-    borderRadius: BORDER_RADIUS.xs,
-    backgroundColor: COLORS.surface,
-  },
-
-  episodeThumbPlaceholder: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  episodeInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  episodeTitle: {
-    color: COLORS.text.primary,
-    fontFamily: FONTS.bodyMedium,
-    fontSize: 13,
-  },
-  episodeTitleActive: {
-    color: COLORS.primary,
-    fontFamily: FONTS.heading,
-  },
-  episodeMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 4,
-    marginTop: 2,
-  },
-  episodeMetaText: {
-    color: COLORS.text.muted,
-    fontFamily: FONTS.body,
-    fontSize: 11,
-  },
-  epMetaDot: {
-    width: 3,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: COLORS.text.muted,
-  },
-  episodeRatingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  episodeDesc: {
-    color: COLORS.text.secondary,
-    fontFamily: FONTS.body,
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 8,
-    marginLeft: 34,
-  },
-  nowPlayingBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: COLORS.primaryMuted,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  epWatchButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 4,
-  },
-  epWatchButtonDone: {
-    borderColor: COLORS.teal,
-    backgroundColor: 'rgba(45,212,168,0.12)',
-  },
-  // Expanded episode detail styles
-  epExpandedWrap: {
-    backgroundColor: COLORS.surface,
-    paddingHorizontal: SPACING.m,
-    paddingVertical: SPACING.m,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
-  },
-  epExpandedLoading: {
-    paddingVertical: SPACING.l,
-    alignItems: 'center',
-  },
-  epExpandedImageWrap: {
-    alignItems: 'center',
-    marginBottom: SPACING.m,
-  },
-  epExpandedImage: {
-    width: '100%',
-    height: 180,
-    borderRadius: BORDER_RADIUS.s,
-    backgroundColor: COLORS.card,
-  },
-  epExpandedTitle: {
-    color: COLORS.text.primary,
-    fontFamily: FONTS.heading,
-    fontSize: 15,
-    marginBottom: SPACING.xs,
-  },
-  epExpandedStats: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.m,
-    marginBottom: SPACING.m,
-  },
-  epStatItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  epStatValue: {
-    fontFamily: FONTS.heading,
-    fontSize: 14,
-  },
-  epStatLabel: {
-    color: COLORS.text.muted,
-    fontFamily: FONTS.body,
-    fontSize: 12,
-  },
-  epExpandedOverview: {
-    color: COLORS.text.secondary,
-    fontFamily: FONTS.body,
-    fontSize: 13,
-    lineHeight: 20,
-    marginBottom: SPACING.m,
-  },
-});
-
-const watchedStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  container: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING.m,
-    paddingVertical: SPACING.s,
-    paddingTop: Platform.OS === 'android' ? 40 : 54,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
-  },
-  headerBtn: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    color: COLORS.text.primary,
-    fontFamily: FONTS.display,
-    fontSize: 20,
-  },
-  body: {
-    flex: 1,
-    paddingHorizontal: SPACING.m,
-  },
-  episodeInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.m,
-    paddingVertical: SPACING.m,
-  },
-  episodeThumb: {
-    width: 50,
-    height: 50,
-    borderRadius: BORDER_RADIUS.xs,
-    backgroundColor: COLORS.card,
-  },
-  thumbPlaceholder: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  episodeText: {
-    flex: 1,
-    gap: 2,
-  },
-  episodeTitle: {
-    color: COLORS.text.primary,
-    fontFamily: FONTS.heading,
-    fontSize: 15,
-  },
-  episodeSub: {
-    color: COLORS.text.secondary,
-    fontFamily: FONTS.body,
-    fontSize: 13,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: SPACING.m,
-  },
-  rowLabel: {
-    color: COLORS.text.secondary,
-    fontFamily: FONTS.bodyMedium,
-    fontSize: 15,
-  },
-  dateRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  dateText: {
-    color: COLORS.text.primary,
-    fontFamily: FONTS.body,
-    fontSize: 14,
-  },
-  separator: {
-    height: 1,
-    backgroundColor: COLORS.primary,
-    opacity: 0.25,
-  },
-  ratingLikeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: SPACING.l,
-  },
-  starsWrap: {
-    alignItems: 'flex-start',
-    gap: 6,
-  },
-  starsRow: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-  starsLabel: {
-    color: COLORS.text.secondary,
-    fontFamily: FONTS.body,
-    fontSize: 13,
-  },
-  likeWrap: {
-    alignItems: 'center',
-    gap: 6,
-  },
-  likeLabel: {
-    color: COLORS.text.secondary,
-    fontFamily: FONTS.body,
-    fontSize: 13,
-  },
-  reviewInput: {
-    color: COLORS.text.primary,
-    fontFamily: FONTS.body,
-    fontSize: 15,
-    paddingVertical: SPACING.m,
-    minHeight: 100,
-  },
-  tagsInput: {
-    color: COLORS.text.primary,
-    fontFamily: FONTS.body,
-    fontSize: 15,
-    paddingVertical: SPACING.m,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: SPACING.xl,
-  },
-  toggleItem: {
-    alignItems: 'center',
-    gap: 8,
-  },
-  toggleIconWrap: {
-    position: 'relative',
-  },
-  toggleCheck: {
-    position: 'absolute',
-    top: -6,
-    left: -6,
-    zIndex: 1,
-  },
-  toggleLabel: {
-    color: COLORS.text.muted,
-    fontFamily: FONTS.body,
-    fontSize: 12,
-    textAlign: 'center',
-  },
-  toggleLabelActive: {
-    color: COLORS.text.secondary,
   },
 });

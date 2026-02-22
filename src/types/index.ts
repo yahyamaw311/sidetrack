@@ -116,6 +116,13 @@ export interface WatchedEpisode {
   noSpoilers?: boolean;
 }
 
+export interface CurrentlyWatchingItem {
+  seriesId: number;
+  name: string;
+  posterPath: string | null;
+  lastUpdated: string; // ISO date
+}
+
 export interface QueuedItem {
   seriesId: number;
   name: string;

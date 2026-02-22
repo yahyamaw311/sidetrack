@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { WatchedEpisode, QueuedItem, WatchedMovie, FavoriteMovie } from '../types';
+import { WatchedEpisode, QueuedItem, WatchedMovie, FavoriteMovie, CurrentlyWatchingItem } from '../types';
 
 const STORAGE_KEYS = {
   WATCHED: '@sidetrack_watched',
@@ -7,6 +7,7 @@ const STORAGE_KEYS = {
   WATCHLIST: '@sidetrack_watchlist',
   WATCHED_MOVIES: '@sidetrack_watched_movies',
   FAVORITE_MOVIES: '@sidetrack_favorite_movies',
+  CURRENTLY_WATCHING: '@sidetrack_currently_watching',
 };
 
 // --- Helper to get parsed JSON ---
@@ -32,7 +33,7 @@ const setData = async (key: string, value: any) => {
 
 export const StorageProvider = {
   // --- Watched Status & Ratings ---
-  
+
   markEpisodeAsWatched: async (episode: WatchedEpisode) => {
     const watched = await getData<Record<number, WatchedEpisode>>(STORAGE_KEYS.WATCHED, {});
     watched[episode.episodeId] = episode;
@@ -95,7 +96,7 @@ export const StorageProvider = {
 
   getWatchlist: async (): Promise<QueuedItem[]> => {
     const watchlist = await getData<Record<number, QueuedItem>>(STORAGE_KEYS.WATCHLIST, {});
-    return Object.values(watchlist).sort((a, b) => 
+    return Object.values(watchlist).sort((a, b) =>
       new Date(b.addedDate).getTime() - new Date(a.addedDate).getTime()
     );
   },
@@ -104,8 +105,8 @@ export const StorageProvider = {
 
   addToWatchedMovies: async (movie: WatchedMovie) => {
     const watched = await getData<Record<string, WatchedMovie>>(STORAGE_KEYS.WATCHED_MOVIES, {});
-    // Use movieId as key — only one entry per movie (no duplicate logs)
-    const key = String(movie.movieId);
+    // Use movieId + timestamp as key to allow multiple logs (rewatches)
+    const key = `${movie.movieId}_${movie.watchedDate}`;
     watched[key] = movie;
     await setData(STORAGE_KEYS.WATCHED_MOVIES, watched);
   },
@@ -136,7 +137,7 @@ export const StorageProvider = {
 
   getWatchedMovies: async (): Promise<WatchedMovie[]> => {
     const watched = await getData<Record<string, WatchedMovie>>(STORAGE_KEYS.WATCHED_MOVIES, {});
-    return Object.values(watched).sort((a, b) => 
+    return Object.values(watched).sort((a, b) =>
       new Date(b.watchedDate).getTime() - new Date(a.watchedDate).getTime()
     );
   },
@@ -167,5 +168,38 @@ export const StorageProvider = {
   getAllFavoriteMovies: async (): Promise<FavoriteMovie[]> => {
     const favorites = await getData<Record<number, FavoriteMovie>>(STORAGE_KEYS.FAVORITE_MOVIES, {});
     return Object.values(favorites);
+  },
+
+  // --- Currently Watching ---
+
+  addToCurrentlyWatching: async (item: CurrentlyWatchingItem) => {
+    const list = await getData<CurrentlyWatchingItem[]>(STORAGE_KEYS.CURRENTLY_WATCHING, []);
+    // Remove if already exists, then add to front
+    const filtered = list.filter(i => i.seriesId !== item.seriesId);
+    filtered.unshift({ ...item, lastUpdated: new Date().toISOString() });
+    await setData(STORAGE_KEYS.CURRENTLY_WATCHING, filtered);
+  },
+
+  removeFromCurrentlyWatching: async (seriesId: number) => {
+    const list = await getData<CurrentlyWatchingItem[]>(STORAGE_KEYS.CURRENTLY_WATCHING, []);
+    await setData(STORAGE_KEYS.CURRENTLY_WATCHING, list.filter(i => i.seriesId !== seriesId));
+  },
+
+  getCurrentlyWatching: async (): Promise<CurrentlyWatchingItem[]> => {
+    return await getData<CurrentlyWatchingItem[]>(STORAGE_KEYS.CURRENTLY_WATCHING, []);
+  },
+
+  /** Check if all episodes of a show have been watched */
+  isShowFullyWatched: async (seriesId: number, totalEpisodesBySeasons: Record<number, number>): Promise<boolean> => {
+    const watched = await getData<Record<number, WatchedEpisode>>(STORAGE_KEYS.WATCHED, {});
+    const watchedForShow = Object.values(watched).filter(w => w.seriesId === seriesId);
+    // Count total expected episodes (skip season 0 / specials)
+    let totalExpected = 0;
+    for (const [season, count] of Object.entries(totalEpisodesBySeasons)) {
+      if (Number(season) > 0) totalExpected += count;
+    }
+    // Count unique watched episodes
+    const watchedIds = new Set(watchedForShow.map(w => w.episodeId));
+    return watchedIds.size >= totalExpected;
   },
 };

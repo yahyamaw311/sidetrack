@@ -3,17 +3,19 @@ import { View, StyleSheet, StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
-import { 
+import {
   SpaceGrotesk_500Medium,
   SpaceGrotesk_600SemiBold,
   SpaceGrotesk_700Bold,
 } from '@expo-google-fonts/space-grotesk';
-import { 
-  Inter_400Regular, 
-  Inter_500Medium, 
+import {
+  Inter_400Regular,
+  Inter_500Medium,
   Inter_600SemiBold,
 } from '@expo-google-fonts/inter';
 import { MainNavigation } from './src/navigation/MainNavigation';
+import { ErrorBoundary } from './src/components/ErrorBoundary';
+import { NetworkBanner } from './src/components/NetworkBanner';
 import { COLORS } from './src/constants/theme';
 
 // Keep the splash screen visible while we fetch resources
@@ -41,10 +43,13 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <View style={styles.container} onLayout={onLayoutRootView}>
-        <StatusBar barStyle="light-content" backgroundColor={COLORS.background} translucent={false} />
-        <MainNavigation />
-      </View>
+      <ErrorBoundary>
+        <View style={styles.container} onLayout={onLayoutRootView}>
+          <StatusBar barStyle="light-content" backgroundColor={COLORS.background} translucent={false} />
+          <NetworkBanner />
+          <MainNavigation />
+        </View>
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }

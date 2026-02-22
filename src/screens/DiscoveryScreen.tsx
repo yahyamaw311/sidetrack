@@ -1,15 +1,16 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { 
-  View, Text, StyleSheet, FlatList, Image, TextInput, 
-  TouchableOpacity, ActivityIndicator, 
-  Platform, ScrollView, Animated 
+import {
+  View, Text, StyleSheet, FlatList, Image, TextInput,
+  TouchableOpacity, ActivityIndicator,
+  Platform, ScrollView, Animated, RefreshControl
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, LAYOUT, BORDER_RADIUS } from '../constants/theme';
 import { tmdbService } from '../services/tmdbService';
-import { SearchResult } from '../types';
+import { StorageProvider } from '../services/StorageProvider';
+import { SearchResult, CurrentlyWatchingItem } from '../types';
 
 const SPOTLIGHT_WIDTH = LAYOUT.window.width * 0.75;
 const POSTER_WIDTH = (LAYOUT.window.width - SPACING.m * 2 - SPACING.s * 2) / 3;
@@ -154,7 +155,10 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow }
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [trending, setTrending] = useState<SearchResult[]>([]);
+  const [trendingMovies, setTrendingMovies] = useState<SearchResult[]>([]);
+  const [currentlyWatching, setCurrentlyWatching] = useState<CurrentlyWatchingItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [searchActive, setSearchActive] = useState(false);
   const [searching, setSearching] = useState(false);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -168,9 +172,26 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow }
 
   const loadTrending = async () => {
     setLoading(true);
-    const data = await tmdbService.getTrending();
-    setTrending(data);
+    const [tvData, movieData] = await Promise.all([
+      tmdbService.getTrending(),
+      tmdbService.getTrendingMovies(),
+    ]);
+    setTrending(tvData);
+    setTrendingMovies(movieData);
+    setCurrentlyWatching(await StorageProvider.getCurrentlyWatching());
     setLoading(false);
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    const [tvData, movieData] = await Promise.all([
+      tmdbService.getTrending(),
+      tmdbService.getTrendingMovies(),
+    ]);
+    setTrending(tvData);
+    setTrendingMovies(movieData);
+    setCurrentlyWatching(await StorageProvider.getCurrentlyWatching());
+    setRefreshing(false);
   };
 
   const performSearch = useCallback(async (text: string) => {
@@ -212,12 +233,12 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow }
   const popular = trending.slice(8);
 
   const renderSpotlightItem = ({ item }: { item: SearchResult }) => (
-    <TouchableOpacity 
+    <TouchableOpacity
       onPress={() => onSelectShow(item)}
       activeOpacity={0.8}
       style={styles.spotlightCard}
     >
-      <Image 
+      <Image
         source={{ uri: tmdbService.getImageUrl(item.backdrop_path || item.poster_path, 'w780') }}
         style={styles.spotlightImage}
         resizeMode="cover"
@@ -240,12 +261,12 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow }
   );
 
   const renderPosterItem = ({ item }: { item: SearchResult }) => (
-    <TouchableOpacity 
+    <TouchableOpacity
       onPress={() => onSelectShow(item)}
       activeOpacity={0.8}
       style={styles.posterCard}
     >
-      <Image 
+      <Image
         source={{ uri: tmdbService.getImageUrl(item.poster_path) }}
         style={styles.posterImage}
         resizeMode="cover"
@@ -262,7 +283,7 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow }
       activeOpacity={0.7}
       style={styles.searchResultCard}
     >
-      <Image 
+      <Image
         source={{ uri: tmdbService.getImageUrl(item.poster_path) }}
         style={styles.searchPoster}
       />
@@ -301,7 +322,7 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow }
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Explore</Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={() => {
               if (searchActive) {
                 clearSearch();
@@ -356,24 +377,90 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow }
           />
         ) : (
           /* Browse Sections */
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                tintColor={COLORS.primary}
+                colors={[COLORS.primary]}
+              />
+            }
+          >
             {/* Spotlight */}
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <View style={styles.sectionDot} />
                 <Text style={styles.sectionTitle}>Spotlight</Text>
               </View>
-              <FlatList
-                data={spotlight}
-                renderItem={renderSpotlightItem}
-                keyExtractor={item => `spot-${item.id}`}
+              <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.spotlightList}
                 snapToInterval={SPOTLIGHT_WIDTH + SPACING.s}
                 decelerationRate="fast"
-              />
+              >
+                {spotlight.map(item => (
+                  <TouchableOpacity
+                    key={`spot-${item.id}`}
+                    onPress={() => onSelectShow(item)}
+                    activeOpacity={0.8}
+                    style={styles.spotlightCard}
+                  >
+                    <Image
+                      source={{ uri: tmdbService.getImageUrl(item.backdrop_path || item.poster_path, 'w780') }}
+                      style={styles.spotlightImage}
+                      resizeMode="cover"
+                    />
+                    <LinearGradient
+                      colors={['transparent', 'rgba(7,7,11,0.9)']}
+                      style={styles.spotlightGradient}
+                    >
+                      <View style={styles.spotlightInfo}>
+                        <Text style={styles.spotlightTitle} numberOfLines={1}>
+                          {item.name || item.title}
+                        </Text>
+                        <View style={styles.spotlightMeta}>
+                          <View style={[styles.ratingDot, { backgroundColor: getRatingColor(item.vote_average) }]} />
+                          <Text style={styles.spotlightRating}>{(item.vote_average || 0).toFixed(1)}</Text>
+                        </View>
+                      </View>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </View>
+
+            {/* Currently Watching */}
+            {currentlyWatching.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <View style={[styles.sectionDot, { backgroundColor: COLORS.teal }]} />
+                  <Text style={styles.sectionTitle}>Currently Watching</Text>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.posterList}>
+                  {currentlyWatching.map(item => (
+                    <TouchableOpacity
+                      key={`cw-${item.seriesId}`}
+                      onPress={() => onSelectShow({ id: item.seriesId, media_type: 'tv', name: item.name, poster_path: item.posterPath } as SearchResult)}
+                      activeOpacity={0.8}
+                      style={styles.posterCard}
+                    >
+                      <Image
+                        source={{ uri: tmdbService.getImageUrl(item.posterPath) }}
+                        style={styles.posterImage}
+                        resizeMode="cover"
+                      />
+                      <Text style={styles.posterTitle} numberOfLines={2}>
+                        {item.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
 
             {/* Popular */}
             <View style={styles.section}>
@@ -381,14 +468,52 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow }
                 <View style={styles.sectionDot} />
                 <Text style={styles.sectionTitle}>Popular</Text>
               </View>
-              <FlatList
-                data={popular.length > 0 ? popular : trending}
-                renderItem={renderPosterItem}
-                keyExtractor={item => `pop-${item.id}`}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.posterList}
-              />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.posterList}>
+                {(popular.length > 0 ? popular : trending).map(item => (
+                  <TouchableOpacity
+                    key={`pop-${item.id}`}
+                    onPress={() => onSelectShow(item)}
+                    activeOpacity={0.8}
+                    style={styles.posterCard}
+                  >
+                    <Image
+                      source={{ uri: tmdbService.getImageUrl(item.poster_path) }}
+                      style={styles.posterImage}
+                      resizeMode="cover"
+                    />
+                    <Text style={styles.posterTitle} numberOfLines={2}>
+                      {item.name || item.title}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
+            {/* Trending Movies */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionDot} />
+                <Text style={styles.sectionTitle}>Trending Movies</Text>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.posterList}>
+                {trendingMovies.slice(0, 12).map(item => (
+                  <TouchableOpacity
+                    key={`tmov-${item.id}`}
+                    onPress={() => onSelectShow(item)}
+                    activeOpacity={0.8}
+                    style={styles.posterCard}
+                  >
+                    <Image
+                      source={{ uri: tmdbService.getImageUrl(item.poster_path) }}
+                      style={styles.posterImage}
+                      resizeMode="cover"
+                    />
+                    <Text style={styles.posterTitle} numberOfLines={2}>
+                      {item.name || item.title}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </View>
           </ScrollView>
         )}

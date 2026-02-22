@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, Platform, Alert, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../constants/theme';
@@ -26,9 +26,22 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow }
     loadWatchlist();
   }, [loadWatchlist]);
 
-  const handleRemove = async (seriesId: number) => {
-    await StorageProvider.removeFromWatchlist(seriesId);
-    await loadWatchlist();
+  const handleRemove = (seriesId: number, name: string) => {
+    Alert.alert(
+      'Remove from Watchlist',
+      `Remove "${name}" from your watchlist?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            await StorageProvider.removeFromWatchlist(seriesId);
+            await loadWatchlist();
+          },
+        },
+      ]
+    );
   };
 
   const formatDate = (isoDate: string) => {
@@ -37,12 +50,12 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow }
   };
 
   const renderItem = ({ item }: { item: QueuedItem }) => (
-    <TouchableOpacity 
+    <TouchableOpacity
       onPress={() => onSelectShow(item.seriesId, item.itemType || 'tv')}
       style={styles.card}
       activeOpacity={0.7}
     >
-      <Image 
+      <Image
         source={{ uri: tmdbService.getImageUrl(item.posterPath) }}
         style={styles.poster}
         resizeMode="cover"
@@ -54,8 +67,8 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow }
               {(item.itemType || 'tv') === 'movie' ? 'MOVIE' : 'SERIES'}
             </Text>
           </View>
-          <TouchableOpacity 
-            onPress={() => handleRemove(item.seriesId)}
+          <TouchableOpacity
+            onPress={() => handleRemove(item.seriesId, item.name)}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             style={styles.removeBtn}
           >
@@ -106,6 +119,14 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow }
             keyExtractor={(item) => item.seriesId.toString()}
             contentContainerStyle={styles.list}
             showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={loading}
+                onRefresh={loadWatchlist}
+                tintColor={COLORS.primary}
+                colors={[COLORS.primary]}
+              />
+            }
           />
         )}
       </SafeAreaView>

@@ -1,35 +1,65 @@
-Bugs to Fix
+SIDETRACK — TODO
+=================
 
-Logging the same movie twice silently overwrites — storage keys by movieId, so a rewatch replaces the original entry (date + rating lost).
-Tapping a person in search results crashes — TMDB multi-search returns people, but the app tries to open them as a TV show.
-MovieDetail shows infinite loading on API failure — if the network call fails, movie stays null and you're stuck on the loading screen.
-getRatingColor thresholds differ across screens — a 6.5-rated show appears "good" on Discovery but "mid" on details.
+## 🎨 UI / UX Polish
+- [ ] Animated page transitions (shared element: poster image from list → detail)
+- [ ] Skeleton loading screens for Movie/Episode detail (instead of spinner)
+- [ ] Haptic feedback on star rating, favoriting, and watchlist toggle
+- [ ] Swipe-to-delete in Watchlist and History (instead of long-press)
+- [ ] Dark/light theme toggle (Settings screen)
+- [ ] Custom app icon selector
+- [ ] Splash screen with animated logo
 
+## 📺 Discovery & Browse
+- [ ] Genre filter chips on Explore (Action, Comedy, Drama, etc.)
+- [ ] "Top Rated" section (all-time best rated shows/movies)
+- [ ] "Coming Soon" section — upcoming releases with air dates
+- [ ] Infinite scroll / pagination for search results
+- [ ] Recent searches history (persist locally)
+- [ ] "Similar Shows" / "Recommended" section on detail pages
+- [ ] Cast & crew section on detail pages (tap to see their other work)
+- [ ] Trailers — embed YouTube trailer on Movie/Episode detail
 
-UX Improvements
-No search debouncing — every keystroke fires an API call (flickering results, wasted requests).
-No pull-to-refresh on any list screen (Discovery, Saved, History).
-Watched episodes are invisible — the app stores them but never displays them. History only shows movies.
-No delete confirmation on Saved tab — WatchlistScreen deletes immediately, HistoryScreen asks first.
-Long-press to delete in History isn't discoverable — no visual hint.
-No way to un-mark an episode as watched once logged.
-Discovery only shows trending TV shows — no trending movies until you search.
+## 📊 Stats & Insights (new tab or section)
+- [ ] Total hours watched (movies + episodes runtime)
+- [ ] Monthly/weekly watch streak calendar (GitHub-style heatmap)
+- [ ] Average rating you give vs IMDb average
+- [ ] Most-watched genre breakdown (pie chart)
+- [ ] "Year in Review" summary (top-rated, most-watched genre, total count)
+- [ ] Rating distribution histogram (how many 1-star, 2-star, etc.)
 
-Performance
-Mass parallel IMDb API calls — expanding a 20-episode season fires 40+ simultaneous HTTP requests. Needs concurrency limiting.
-No API response caching — navigating to a detail, going back, and tapping again makes fresh requests every time.
-FlatList inside ScrollView on DiscoveryScreen disables virtualization (React Native warning).
-EpisodeDetail is 1200+ lines — a single component with 15+ useState calls; should be split up.
+## 📝 Logging & Tracking
+- [ ] Edit a watched entry (change rating, date, review after saving)
+- [ ] Bulk mark episodes as watched (select range: "Mark S1 E1–E10")
+- [ ] Watch progress bar on show cards (e.g. "12/62 episodes")
+- [ ] Rewatch count badge on History entries
+- [ ] Import/export watch history (JSON or CSV backup)
+- [ ] "Dropped" status for shows you stopped watching
 
-Error Handling
-No error boundaries — any unhandled exception white-screens the app.
-No offline detection — all screens silently show empty content when there's no internet.
-No API timeout — a stalled request hangs forever.
-Want me to start implementing any of these? I'd suggest tackling them in this order:
+## 🔔 Notifications & Reminders
+- [ ] New episode air date reminders for watchlisted shows
+- [ ] "Continue watching" push notification if inactive for N days
+- [ ] Weekly digest: "You watched X this week"
 
-Persist movie favorites + add StorageProvider method
-Add search debouncing
-Filter out "person" results from search
-Show watched episodes in History tab
-Add pull-to-refresh to list screens
-Add concurrency limiting to IMDb batch fetches
+## 👥 Social
+- [ ] Share a rating/review as an image card (Instagram story-style)
+- [ ] Public profile with watch stats
+- [ ] Friends list — see what friends are watching
+- [ ] Activity feed of friend ratings
+
+## 🔧 Technical / Under the Hood
+- [ ] Migrate storage from AsyncStorage → MMKV (faster reads/writes)
+- [ ] Offline mode — cache last-viewed detail pages for offline reading
+- [ ] Image caching with expo-image (faster poster loads)
+- [ ] Background sync for Currently Watching list
+- [ ] Unit tests for StorageProvider methods
+- [ ] E2E tests with Detox or Maestro
+- [ ] App size optimization — lazy-load detail screens
+- [ ] Deep linking (open show/movie from shared URL)
+
+## 🧹 Code Quality
+- [ ] Extract ShowInfoCard from EpisodeDetail (About the Show section)
+- [ ] Shared detail header component (Movie + Episode share backdrop layout)
+- [ ] Centralized error handling hook (useApiCall with loading/error states)
+- [ ] Move all magic numbers to theme constants
+- [ ] Add TypeScript strict mode

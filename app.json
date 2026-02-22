@@ -2,7 +2,7 @@
   "expo": {
     "name": "Sidetrack",
     "slug": "sidetrack",
-    "version": "1.0.0",
+    "version": "0.6.0",
     "orientation": "portrait",
     "icon": "./assets/logo.png",
     "userInterfaceStyle": "light",

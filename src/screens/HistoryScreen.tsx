@@ -1,15 +1,16 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  FlatList, 
-  Image, 
-  TouchableOpacity, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  Image,
+  TouchableOpacity,
   Platform,
   Alert,
   TextInput,
   LayoutAnimation,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -42,6 +43,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
   const [movies, setMovies] = useState<WatchedMovie[]>([]);
   const [episodes, setEpisodes] = useState<WatchedEpisode[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Favorites filter state
@@ -68,6 +70,21 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
     setLoading(false);
   }, []);
 
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    const [movieData, episodeData, favMovies, favEpisodeIdList] = await Promise.all([
+      StorageProvider.getWatchedMovies(),
+      StorageProvider.getAllWatchedEpisodes(),
+      StorageProvider.getAllFavoriteMovies(),
+      StorageProvider.getAllFavorites(),
+    ]);
+    setMovies(movieData);
+    setEpisodes(episodeData);
+    setFavoriteMovieIds(new Set(favMovies.map(m => m.movieId)));
+    setFavoriteEpisodeIds(new Set(favEpisodeIdList));
+    setRefreshing(false);
+  }, []);
+
   useEffect(() => {
     loadHistory();
   }, [loadHistory]);
@@ -78,8 +95,8 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
       `Remove "${title}" from your log?`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Remove', 
+        {
+          text: 'Remove',
           style: 'destructive',
           onPress: async () => {
             await StorageProvider.removeFromWatchedMovies(movieId, watchedDate);
@@ -203,7 +220,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
 
   // ── Render: unified movie row ──
   const renderMovieRow = (item: WatchedMovie, index: number) => (
-    <TouchableOpacity 
+    <TouchableOpacity
       style={styles.row}
       onPress={() => onSelectMovie?.(item.movieId)}
       onLongPress={() => handleRemoveMovie(item.movieId, item.title, item.watchedDate)}
@@ -213,7 +230,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
         <View style={[styles.timelineDot, { backgroundColor: getRatingColor(item.rating) }]} />
         {index < unifiedItems.length - 1 && <View style={styles.timelineLine} />}
       </View>
-      <Image 
+      <Image
         source={{ uri: tmdbService.getImageUrl(item.posterPath) }}
         style={styles.poster}
       />
@@ -470,8 +487,8 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
               {showFavoritesOnly
                 ? 'Favorite movies and episodes will appear here'
                 : query
-                ? `No movies or shows matching "${searchQuery}"`
-                : 'Movies and TV shows you watch will appear here'}
+                  ? `No movies or shows matching "${searchQuery}"`
+                  : 'Movies and TV shows you watch will appear here'}
             </Text>
           </View>
         ) : (
@@ -485,6 +502,17 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
             }
             contentContainerStyle={styles.list}
             showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                tintColor={COLORS.primary}
+                colors={[COLORS.primary]}
+              />
+            }
+            ListHeaderComponent={
+              <Text style={styles.longPressHint}>Long-press an entry to remove it</Text>
+            }
           />
         )}
       </View>
@@ -670,6 +698,14 @@ const styles = StyleSheet.create({
   favFilterBtnActive: {
     backgroundColor: COLORS.primaryMuted,
     borderColor: COLORS.primary,
+  },
+  longPressHint: {
+    color: COLORS.text.muted,
+    fontFamily: FONTS.body,
+    fontSize: 11,
+    textAlign: 'center',
+    paddingVertical: SPACING.xs,
+    marginBottom: SPACING.xs,
   },
 });
 
