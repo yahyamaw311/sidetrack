@@ -16,9 +16,10 @@ interface SwipeableRowProps {
     height?: number;
 }
 
-export const SwipeableRow: React.FC<SwipeableRowProps> = ({ children, onDelete, height = 120 }) => {
+export const SwipeableRow: React.FC<SwipeableRowProps> = ({ children, onDelete, height }) => {
     const translateX = useRef(new Animated.Value(0)).current;
     const [revealed, setRevealed] = useState(false);
+    const [measuredHeight, setMeasuredHeight] = useState<number | undefined>(height);
     const isDeleting = useRef(false);
 
     const snapTo = (value: number) => {
@@ -87,7 +88,7 @@ export const SwipeableRow: React.FC<SwipeableRowProps> = ({ children, onDelete, 
     });
 
     return (
-        <View style={[styles.container, { height }]}>
+        <View style={[styles.container, measuredHeight != null && { height: measuredHeight }]}>
             {/* Delete button background */}
             <Animated.View style={[styles.deleteBackground, { opacity: deleteOpacity }]}>
                 <TouchableOpacity
@@ -104,6 +105,10 @@ export const SwipeableRow: React.FC<SwipeableRowProps> = ({ children, onDelete, 
             <Animated.View
                 style={[styles.content, { transform: [{ translateX }] }]}
                 {...panResponder.panHandlers}
+                onLayout={height == null ? (e) => {
+                    const h = e.nativeEvent.layout.height;
+                    if (h > 0 && measuredHeight !== h) setMeasuredHeight(h);
+                } : undefined}
             >
                 {children}
             </Animated.View>

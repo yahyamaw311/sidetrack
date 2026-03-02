@@ -32,7 +32,7 @@ export interface WrappedStats {
     uniqueShowsWatched: number;
     showsWithMostEpisodes: { name: string; count: number }[];
     fastestBinge: { name: string; days: number; episodes: number } | null;
-    totalSeasonsCompleted: number;
+    totalSeasonsStarted: number;
     // Movie-specific
     decadeBreakdown: Record<string, number>; // "2020s" -> count
     oldestMovie: { title: string; year: number } | null;
@@ -150,11 +150,19 @@ const getFunTimeEquivalent = (hours: number): string => {
 // ── Main computation ──
 
 export const StatsService = {
-    computeWrapped: async (): Promise<WrappedStats> => {
-        const movies = await StorageProvider.getWatchedMovies();
-        const episodes = await StorageProvider.getAllWatchedEpisodes();
+    computeWrapped: async (year?: number): Promise<WrappedStats> => {
+        const allMovies = await StorageProvider.getWatchedMovies();
+        const allEpisodes = await StorageProvider.getAllWatchedEpisodes();
         const favoriteMovies = await StorageProvider.getAllFavoriteMovies();
         const favoriteEpisodes = await StorageProvider.getAllFavorites();
+
+        // Filter to the requested year (by watchedDate)
+        const isInYear = (dateStr: string) => {
+            if (!year || !dateStr) return true;
+            return new Date(dateStr).getFullYear() === year;
+        };
+        const movies = allMovies.filter(m => isInYear(m.watchedDate));
+        const episodes = allEpisodes.filter(e => isInYear(e.watchedDate));
 
         const allDates = [
             ...movies.map(m => m.watchedDate),
@@ -195,18 +203,20 @@ export const StatsService = {
         }
 
         // ── Ratings ──
-        const movieRatings = movies.filter(m => m.rating > 0).map(m => m.rating);
+        // Normalize movie ratings: legacy entries used 1-10, new entries use 0-5 stars
+        const normalizeMovieRating = (r: number) => (r > 5 ? r / 2 : r);
+        const movieRatings = movies.filter(m => m.rating > 0).map(m => normalizeMovieRating(m.rating));
         const avgMovieRating = movieRatings.length > 0 ? Math.round((movieRatings.reduce((s, r) => s + r, 0) / movieRatings.length) * 10) / 10 : 0;
 
         const epRatings = episodes.filter(e => e.rating > 0).map(e => e.rating);
         const avgEpisodeRating = epRatings.length > 0 ? Math.round((epRatings.reduce((s, r) => s + r, 0) / epRatings.length) * 10) / 10 : 0;
 
-        // Rating distribution (all ratings combined, movie ratings 1-10 normalized to 0.5-5)
+        // Rating distribution (all ratings on unified 0-5 star scale)
         const ratingDistribution: Record<string, number> = {};
-        // Episode ratings are 0-5 scale, movie ratings are 1-10, normalize movies to 5-star
+        // Normalize movie ratings to 0-5 stars (handles both legacy 1-10 and new 0-5)
         movies.forEach(m => {
             if (m.rating > 0) {
-                const normalized = Math.round((m.rating / 2) * 2) / 2; // round to nearest 0.5
+                const normalized = Math.round(normalizeMovieRating(m.rating) * 2) / 2; // round to nearest 0.5
                 const key = normalized.toString();
                 ratingDistribution[key] = (ratingDistribution[key] || 0) + 1;
             }
@@ -334,10 +344,10 @@ export const StatsService = {
             }
         });
 
-        // Total completed seasons
+        // Total seasons with at least one watched episode
         const seasonSet = new Set<string>();
         episodes.forEach(e => seasonSet.add(`${e.seriesId}-S${e.seasonNumber}`));
-        const totalSeasonsCompleted = seasonSet.size;
+        const totalSeasonsStarted = seasonSet.size;
 
         // ── Movie-specific ──
         const decadeBreakdown: Record<string, number> = {};
@@ -396,7 +406,7 @@ export const StatsService = {
             highestRatedMovies, lowestRatedMovies, highestRatedShows,
             topGenres, genreByAvgRating,
             longestStreak, busiestDayOfWeek, firstLog, lastLog, monthlyActivity,
-            uniqueShowsWatched, showsWithMostEpisodes, fastestBinge, totalSeasonsCompleted,
+            uniqueShowsWatched, showsWithMostEpisodes, fastestBinge, totalSeasonsStarted,
             decadeBreakdown, oldestMovie, newestMovie, avgMovieRuntime, rewatchCount,
             totalLikes, totalFavorites, likeRatio, totalReviews, avgReviewLength, topTags,
             personalityType, funTimeEquivalent, totalEntries,

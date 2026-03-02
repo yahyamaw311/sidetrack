@@ -1,7 +1,5 @@
 import { Dimensions } from 'react-native';
 
-const { width, height } = Dimensions.get('window');
-
 export const COLORS = {
   background: '#07070B',
   surface: '#111118',
@@ -55,8 +53,8 @@ export const SPACING = {
 };
 
 export const LAYOUT = {
-  window: { width, height },
-  isSmallDevice: width < 375,
+  get window() { return Dimensions.get('window'); },
+  get isSmallDevice() { return Dimensions.get('window').width < 375; },
 };
 
 export const SHADOWS = {

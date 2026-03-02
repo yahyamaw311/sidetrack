@@ -150,9 +150,10 @@ const DiscoverySkeleton = () => (
 interface DiscoveryScreenProps {
   onSelectShow: (show: SearchResult) => void;
   onBackRef?: (fn: (() => boolean) | null) => void;
+  refreshRef?: (fn: (() => void) | null) => void;
 }
 
-export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, onBackRef }) => {
+export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, onBackRef, refreshRef }) => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [trending, setTrending] = useState<SearchResult[]>([]);
@@ -184,6 +185,19 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
     }
     return () => { onBackRef?.(null); };
   }, [searchActive, onBackRef]);
+
+  // Expose silent currently-watching refresh to parent
+  const refreshCW = useCallback(async () => {
+    setCurrentlyWatching(await StorageProvider.getCurrentlyWatching());
+  }, []);
+
+  const refreshCWRef = useRef(refreshCW);
+  refreshCWRef.current = refreshCW;
+
+  useEffect(() => {
+    if (refreshRef) refreshRef(() => { refreshCWRef.current(); });
+    return () => { refreshRef?.(null); };
+  }, []);
 
   const loadTrending = async () => {
     setLoading(true);

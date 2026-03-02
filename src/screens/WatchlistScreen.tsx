@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, Platform, Alert, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,9 +10,10 @@ import { QueuedItem } from '../types';
 
 interface WatchlistScreenProps {
   onSelectShow: (id: number, type: 'tv' | 'movie') => void;
+  refreshRef?: (fn: (() => void) | null) => void;
 }
 
-export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow }) => {
+export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, refreshRef }) => {
   const [items, setItems] = useState<QueuedItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -23,9 +24,24 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow }
     setLoading(false);
   }, []);
 
+  // Silent refresh — updates data without showing loading spinner
+  const silentRefresh = useCallback(async () => {
+    const data = await StorageProvider.getWatchlist();
+    setItems(data);
+  }, []);
+
   useEffect(() => {
     loadWatchlist();
   }, [loadWatchlist]);
+
+  // Expose refresh to parent so it can trigger reload when detail closes
+  const refreshFnRef = useRef(silentRefresh);
+  refreshFnRef.current = silentRefresh;
+
+  useEffect(() => {
+    if (refreshRef) refreshRef(() => { refreshFnRef.current(); });
+    return () => { refreshRef?.(null); };
+  }, []);  // Run once — stable callback via ref
 
   const handleRemove = async (seriesId: number) => {
     await StorageProvider.removeFromWatchlist(seriesId);

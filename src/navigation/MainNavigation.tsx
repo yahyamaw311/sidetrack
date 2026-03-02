@@ -22,6 +22,7 @@ export const MainNavigation = () => {
   const [historyKey, setHistoryKey] = useState(0);
   const [showWrapped, setShowWrapped] = useState(false);
   const [wrappedLocked, setWrappedLocked] = useState(false);
+  const [wrappedYear, setWrappedYear] = useState(new Date().getFullYear());
   const [mountedTabs, setMountedTabs] = useState<Set<TabRoute>>(new Set(['Explore']));
   const isAnimating = useRef(false);
 
@@ -35,6 +36,12 @@ export const MainNavigation = () => {
   const historyBackRef = useRef<(() => boolean) | null>(null);
   // Ref for the DiscoveryScreen back handler
   const discoveryBackRef = useRef<(() => boolean) | null>(null);
+  // Ref to refresh WatchlistScreen when detail closes
+  const watchlistRefreshRef = useRef<(() => void) | null>(null);
+  // Ref to refresh HistoryScreen when detail closes
+  const historyRefreshRef = useRef<(() => void) | null>(null);
+  // Ref to refresh DiscoveryScreen's currently-watching when detail closes
+  const discoveryRefreshRef = useRef<(() => void) | null>(null);
 
   const animateDetailIn = useCallback((show: SearchResult) => {
     setSelectedShow(show);
@@ -64,18 +71,25 @@ export const MainNavigation = () => {
       setVisibleDetail(null);
       setSelectedShow(null);
       isAnimating.current = false;
+      watchlistRefreshRef.current?.();
+      historyRefreshRef.current?.();
+      discoveryRefreshRef.current?.();
       callback?.();
     });
   }, [detailAnim]);
 
   const handleOpenWrapped = () => {
     const now = new Date();
-    const unlockDate = new Date(now.getFullYear(), 11, 15); // Dec 15
-    if (now >= unlockDate) {
+    const unlockThisYear = new Date(now.getFullYear(), 11, 15); // Dec 15 of current year
+    if (now >= unlockThisYear) {
+      // Past Dec 15 — show this year's Wrapped
+      setWrappedYear(now.getFullYear());
       setWrappedLocked(false);
       setShowWrapped(true);
     } else {
-      setWrappedLocked(true);
+      // Before Dec 15 — show previous year's Wrapped
+      setWrappedYear(now.getFullYear() - 1);
+      setWrappedLocked(false);
       setShowWrapped(true);
     }
   };
@@ -227,16 +241,16 @@ export const MainNavigation = () => {
     <View style={styles.container}>
       {/* Tab screens — lazy mounted */}
       <View style={[styles.tabScreen, activeTab !== 'Explore' && styles.tabScreenHidden]}>
-        <DiscoveryScreen onSelectShow={handleSelectShow} onBackRef={(fn: (() => boolean) | null) => { discoveryBackRef.current = fn; }} />
+        <DiscoveryScreen onSelectShow={handleSelectShow} onBackRef={(fn: (() => boolean) | null) => { discoveryBackRef.current = fn; }} refreshRef={(fn: (() => void) | null) => { discoveryRefreshRef.current = fn; }} />
       </View>
       {mountedTabs.has('Watchlist') && (
         <View style={[styles.tabScreen, activeTab !== 'Watchlist' && styles.tabScreenHidden]}>
-          <WatchlistScreen onSelectShow={handleSelectFromWatchlist} />
+          <WatchlistScreen onSelectShow={handleSelectFromWatchlist} refreshRef={(fn: (() => void) | null) => { watchlistRefreshRef.current = fn; }} />
         </View>
       )}
       {mountedTabs.has('Log') && (
         <View style={[styles.tabScreen, activeTab !== 'Log' && styles.tabScreenHidden]}>
-          <HistoryScreen key={historyKey} onSelectMovie={handleSelectFromHistory} onSelectShow={handleSelectShowFromHistory} onOpenWrapped={handleOpenWrapped} onBackRef={(fn: (() => boolean) | null) => { historyBackRef.current = fn; }} />
+          <HistoryScreen key={historyKey} onSelectMovie={handleSelectFromHistory} onSelectShow={handleSelectShowFromHistory} onOpenWrapped={handleOpenWrapped} onBackRef={(fn: (() => boolean) | null) => { historyBackRef.current = fn; }} refreshRef={(fn: (() => void) | null) => { historyRefreshRef.current = fn; }} />
         </View>
       )}
 
@@ -321,7 +335,7 @@ export const MainNavigation = () => {
             </View>
           </View>
         ) : (
-          <WrappedScreen onClose={() => setShowWrapped(false)} />
+          <WrappedScreen year={wrappedYear} onClose={() => setShowWrapped(false)} />
         )
       )}
     </View>

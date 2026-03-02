@@ -13,6 +13,7 @@ interface SeasonBrowserProps {
     watchedEpisodeIds: Set<number>;
     onSelectEpisode: (ep: Episode) => void;
     onOpenWatchedModal: (ep: Episode) => void;
+    onEditWatchedEntry: (ep: Episode) => void;
     onWatchedIdsChange: (updater: (prev: Set<number>) => Set<number>) => void;
 }
 
@@ -23,6 +24,7 @@ export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
     watchedEpisodeIds,
     onSelectEpisode,
     onOpenWatchedModal,
+    onEditWatchedEntry,
     onWatchedIdsChange,
 }) => {
     const [expandedSeason, setExpandedSeason] = useState<number | null>(null);
@@ -138,11 +140,12 @@ export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
 
                                     return (
                                         <View key={ep.id}>
-                                            <TouchableOpacity
-                                                style={[styles.episodeRow, isSelected && styles.episodeRowActive]}
-                                                onPress={() => toggleEpisodeExpand(ep)}
-                                                activeOpacity={0.7}
-                                            >
+                                            <View style={[styles.episodeRow, isSelected && styles.episodeRowActive]}>
+                                                <TouchableOpacity
+                                                    style={styles.epTouchArea}
+                                                    onPress={() => toggleEpisodeExpand(ep)}
+                                                    activeOpacity={0.7}
+                                                >
                                                 {/* Top row: number + thumb + title/meta */}
                                                 <View style={styles.epTopRow}>
                                                     <View style={styles.episodeNumberWrap}>
@@ -192,19 +195,24 @@ export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
                                                         color={COLORS.text.muted}
                                                         style={{ marginLeft: 2 }}
                                                     />
+                                                </View>
+                                                </TouchableOpacity>
                                                     <TouchableOpacity
                                                         style={[
                                                             styles.epWatchButton,
                                                             watchedEpisodeIds.has(ep.id) && styles.epWatchButtonDone,
                                                         ]}
-                                                        onPress={(e) => {
-                                                            e.stopPropagation();
+                                                        onPress={() => {
                                                             if (watchedEpisodeIds.has(ep.id)) {
                                                                 Alert.alert(
-                                                                    'Remove Entry',
-                                                                    `Un-mark "${ep.name}" as watched?`,
+                                                                    ep.name,
+                                                                    'What would you like to do?',
                                                                     [
                                                                         { text: 'Cancel', style: 'cancel' },
+                                                                        {
+                                                                            text: 'Edit',
+                                                                            onPress: () => onEditWatchedEntry(ep),
+                                                                        },
                                                                         {
                                                                             text: 'Remove',
                                                                             style: 'destructive',
@@ -232,8 +240,7 @@ export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
                                                             color={watchedEpisodeIds.has(ep.id) ? COLORS.teal : COLORS.text.muted}
                                                         />
                                                     </TouchableOpacity>
-                                                </View>
-                                            </TouchableOpacity>
+                                            </View>
 
                                             {/* Expanded episode detail */}
                                             {isEpExpanded && (
@@ -356,6 +363,8 @@ const styles = StyleSheet.create({
         borderTopColor: COLORS.borderLight,
     },
     episodeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
         paddingHorizontal: SPACING.m,
         paddingVertical: 12,
         borderBottomWidth: 1,
@@ -363,6 +372,9 @@ const styles = StyleSheet.create({
     },
     episodeRowActive: {
         backgroundColor: COLORS.primaryMuted,
+    },
+    epTouchArea: {
+        flex: 1,
     },
     epTopRow: {
         flexDirection: 'row',

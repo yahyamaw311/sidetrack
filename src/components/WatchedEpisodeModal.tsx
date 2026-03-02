@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, TextInput, Modal, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
@@ -6,6 +6,16 @@ import { tmdbService } from '../services/tmdbService';
 import { Episode, TVShowDetail } from '../types';
 import { SwipeableStars } from './SwipeableStars';
 import { DatePickerModal } from './DatePicker';
+
+interface InitialData {
+    rating?: number;
+    liked?: boolean;
+    review?: string;
+    tags?: string;
+    rewatch?: boolean;
+    noSpoilers?: boolean;
+    watchedDate?: Date;
+}
 
 interface WatchedEpisodeModalProps {
     visible: boolean;
@@ -21,6 +31,7 @@ interface WatchedEpisodeModalProps {
         noSpoilers: boolean;
         watchedDate: Date;
     }) => void;
+    initialData?: InitialData | null;
 }
 
 export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
@@ -29,6 +40,7 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
     show,
     onClose,
     onConfirm,
+    initialData,
 }) => {
     const [rating, setRating] = useState(0);
     const [liked, setLiked] = useState(false);
@@ -38,6 +50,27 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
     const [noSpoilers, setNoSpoilers] = useState(false);
     const [watchedDate, setWatchedDate] = useState<Date>(new Date());
     const [datePickerVisible, setDatePickerVisible] = useState(false);
+
+    // Pre-fill from initialData when modal opens
+    useEffect(() => {
+        if (visible && initialData) {
+            setRating(initialData.rating ?? 0);
+            setLiked(initialData.liked ?? false);
+            setReview(initialData.review ?? '');
+            setTags(initialData.tags ?? '');
+            setRewatch(initialData.rewatch ?? false);
+            setNoSpoilers(initialData.noSpoilers ?? false);
+            setWatchedDate(initialData.watchedDate ?? new Date());
+        } else if (visible) {
+            setRating(0);
+            setLiked(false);
+            setReview('');
+            setTags('');
+            setRewatch(false);
+            setNoSpoilers(false);
+            setWatchedDate(new Date());
+        }
+    }, [visible]);
 
     const handleConfirm = () => {
         onConfirm({ rating, liked, review, tags, rewatch, noSpoilers, watchedDate });
@@ -80,7 +113,7 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
                         <TouchableOpacity onPress={handleClose} style={styles.headerBtn}>
                             <Ionicons name="close" size={22} color={COLORS.text.primary} />
                         </TouchableOpacity>
-                        <Text style={styles.headerTitle}>I Watched</Text>
+                        <Text style={styles.headerTitle}>{initialData ? 'Edit Entry' : 'I Watched'}</Text>
                         <TouchableOpacity onPress={handleConfirm} style={styles.headerBtn}>
                             <Ionicons name="checkmark" size={22} color={COLORS.text.primary} />
                         </TouchableOpacity>

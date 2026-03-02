@@ -27,10 +27,11 @@ const CARD_GRADIENTS: [string, string, string][] = [
 ];
 
 interface WrappedScreenProps {
+    year: number;
     onClose: () => void;
 }
 
-export const WrappedScreen: React.FC<WrappedScreenProps> = ({ onClose }) => {
+export const WrappedScreen: React.FC<WrappedScreenProps> = ({ year, onClose }) => {
     const [stats, setStats] = useState<WrappedStats | null>(null);
     const [loading, setLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(0);
@@ -42,7 +43,7 @@ export const WrappedScreen: React.FC<WrappedScreenProps> = ({ onClose }) => {
     }, []);
 
     const loadStats = async () => {
-        const data = await StatsService.computeWrapped();
+        const data = await StatsService.computeWrapped(year);
         setStats(data);
         setLoading(false);
         Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }).start();
@@ -68,8 +69,8 @@ export const WrappedScreen: React.FC<WrappedScreenProps> = ({ onClose }) => {
             <View style={styles.loadingContainer}>
                 <LinearGradient colors={['#0f0c29', '#302b63', '#24243e']} style={StyleSheet.absoluteFill} />
                 <Ionicons name="film-outline" size={64} color={COLORS.text.muted} />
-                <Text style={styles.emptyTitle}>Nothing to Wrap Yet!</Text>
-                <Text style={styles.emptySubtitle}>Log some movies and episodes first, then come back.</Text>
+                <Text style={styles.emptyTitle}>Nothing to Wrap for {year}!</Text>
+                <Text style={styles.emptySubtitle}>Log some movies and episodes, then come back.</Text>
                 <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
                     <Text style={styles.closeBtnText}>Go Back</Text>
                 </TouchableOpacity>
@@ -77,7 +78,7 @@ export const WrappedScreen: React.FC<WrappedScreenProps> = ({ onClose }) => {
         );
     }
 
-    const cards = buildCards(stats);
+    const cards = buildCards(stats, year);
     const totalPages = cards.length;
 
     return (
@@ -182,7 +183,7 @@ const BarChart: React.FC<{ data: { label: string; value: number; color?: string 
     );
 };
 
-function buildCards(stats: WrappedStats): CardData[] {
+function buildCards(stats: WrappedStats, year: number): CardData[] {
     const cards: CardData[] = [];
 
     // 1. Hero card
@@ -190,7 +191,7 @@ function buildCards(stats: WrappedStats): CardData[] {
         content: (
             <View style={cardStyles.centered}>
                 <Text style={cardStyles.heroEmoji}>🎬</Text>
-                <Text style={cardStyles.heroTitle}>Your Sidetrack{'\n'}Wrapped</Text>
+                <Text style={cardStyles.heroTitle}>Your {year}{`\n`}Sidetrack Wrapped</Text>
                 <Text style={cardStyles.heroSubtitle}>Here's everything you watched</Text>
                 <View style={cardStyles.heroStatsRow}>
                     <StatValue value={stats.totalMovies} label="Movies" icon="film-outline" />
@@ -234,14 +235,14 @@ function buildCards(stats: WrappedStats): CardData[] {
                 <View>
                     <SectionTitle text="Your Top Movies" emoji="🏆" />
                     {stats.highestRatedMovies.map((m, i) => (
-                        <RankRow key={i} rank={i + 1} text={m.title} subtext={`${m.rating}/10`} color={COLORS.primary} />
+                        <RankRow key={i} rank={i + 1} text={m.title} subtext={`${m.rating > 5 ? (m.rating / 2).toFixed(1) : m.rating}★`} color={COLORS.primary} />
                     ))}
                     {stats.lowestRatedMovies.length > 0 && (
                         <>
                             <View style={{ marginTop: SPACING.l }} />
                             <SectionTitle text="Lowest Rated" emoji="👎" />
                             {stats.lowestRatedMovies.slice(0, 3).map((m, i) => (
-                                <RankRow key={i} rank={i + 1} text={m.title} subtext={`${m.rating}/10`} color={COLORS.coral} />
+                                <RankRow key={i} rank={i + 1} text={m.title} subtext={`${m.rating > 5 ? (m.rating / 2).toFixed(1) : m.rating}★`} color={COLORS.coral} />
                             ))}
                         </>
                     )}
@@ -261,7 +262,7 @@ function buildCards(stats: WrappedStats): CardData[] {
                     ))}
                     <View style={cardStyles.statsGrid}>
                         <StatValue value={stats.uniqueShowsWatched} label="Shows Watched" icon="tv-outline" color={COLORS.teal} />
-                        <StatValue value={stats.totalSeasonsCompleted} label="Seasons" icon="layers-outline" color={COLORS.accent} />
+                        <StatValue value={stats.totalSeasonsStarted} label="Seasons" icon="layers-outline" color={COLORS.accent} />
                     </View>
                 </View>
             ),
@@ -313,7 +314,7 @@ function buildCards(stats: WrappedStats): CardData[] {
                         }))}
                     />
                     <View style={cardStyles.statsGrid}>
-                        <StatValue value={stats.avgMovieRating > 0 ? `${stats.avgMovieRating}/10` : '—'} label="Avg Movie Rating" color={COLORS.primary} />
+                        <StatValue value={stats.avgMovieRating > 0 ? `${stats.avgMovieRating}★` : '—'} label="Avg Movie Rating" color={COLORS.primary} />
                         <StatValue value={stats.avgEpisodeRating > 0 ? `${stats.avgEpisodeRating}★` : '—'} label="Avg Episode Rating" color={COLORS.teal} />
                     </View>
                 </View>
@@ -488,10 +489,10 @@ function buildCards(stats: WrappedStats): CardData[] {
                     <SummaryRow icon="tv" label="Episodes" value={stats.totalEpisodes.toString()} />
                     <SummaryRow icon="time" label="Hours" value={stats.totalHoursWatched.toString()} />
                     <SummaryRow icon="flame" label="Best Streak" value={`${stats.longestStreak} days`} />
-                    <SummaryRow icon="star" label="Avg Movie Rating" value={stats.avgMovieRating > 0 ? `${stats.avgMovieRating}/10` : '—'} />
+                    <SummaryRow icon="star" label="Avg Movie Rating" value={stats.avgMovieRating > 0 ? `${stats.avgMovieRating}★` : '—'} />
                     <SummaryRow icon="heart" label="Likes" value={stats.totalLikes.toString()} />
                     <SummaryRow icon="albums" label="Shows" value={stats.uniqueShowsWatched.toString()} />
-                    <SummaryRow icon="layers" label="Seasons" value={stats.totalSeasonsCompleted.toString()} />
+                    <SummaryRow icon="layers" label="Seasons" value={stats.totalSeasonsStarted.toString()} />
                     {stats.topGenres.length > 0 && <SummaryRow icon="musical-notes" label="Top Genre" value={stats.topGenres[0].genre} />}
                 </View>
                 <Text style={[cardStyles.swipeHint, { marginTop: SPACING.l }]}>That's a wrap! 🎉</Text>

@@ -20,7 +20,9 @@ import { COLORS, FONTS, SPACING, BORDER_RADIUS, getRatingColor } from '../consta
 import { tmdbService } from '../services/tmdbService';
 import { StorageProvider } from '../services/StorageProvider';
 import { SwipeableRow } from '../components/SwipeableRow';
-import { WatchedMovie, WatchedEpisode, FavoriteMovie } from '../types';
+import { WatchedEpisodeModal } from '../components/WatchedEpisodeModal';
+import { Snackbar, SnackbarConfig } from '../components/Snackbar';
+import { WatchedMovie, WatchedEpisode, FavoriteMovie, Episode, TVShowDetail } from '../types';
 
 type TVDrillLevel = 'shows' | 'episodes';
 
@@ -42,6 +44,7 @@ interface HistoryScreenProps {
   onSelectShow?: (id: number) => void;
   onOpenWrapped?: () => void;
   onBackRef?: (fn: (() => boolean) | null) => void;
+  refreshRef?: (fn: (() => void) | null) => void;
 }
 
 // ── Wrapped Banner ──
@@ -80,7 +83,7 @@ const WrappedBanner: React.FC<{ onPress: () => void }> = ({ onPress }) => {
   );
 };
 
-export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onSelectShow, onOpenWrapped, onBackRef }) => {
+export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onSelectShow, onOpenWrapped, onBackRef, refreshRef }) => {
   const [movies, setMovies] = useState<WatchedMovie[]>([]);
   const [episodes, setEpisodes] = useState<WatchedEpisode[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,6 +98,17 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
   // TV drill-down state
   const [tvLevel, setTvLevel] = useState<TVDrillLevel>('shows');
   const [selectedShowId, setSelectedShowId] = useState<number | null>(null);
+
+  // Edit episode modal state
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editEpisode, setEditEpisode] = useState<Episode | null>(null);
+  const [editShow, setEditShow] = useState<{ name: string } | null>(null);
+  const [editInitialData, setEditInitialData] = useState<{
+    rating?: number; liked?: boolean; review?: string; tags?: string;
+    rewatch?: boolean; noSpoilers?: boolean; watchedDate?: Date;
+  } | null>(null);
+  const [editWatchedEntry, setEditWatchedEntry] = useState<WatchedEpisode | null>(null);
+  const [snackbar, setSnackbar] = useState<SnackbarConfig | null>(null);
 
   const loadHistory = useCallback(async () => {
     setLoading(true);
@@ -129,6 +143,28 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
   useEffect(() => {
     loadHistory();
   }, [loadHistory]);
+
+  // Expose silent refresh to parent for when detail overlay closes
+  const silentRefresh = useCallback(async () => {
+    const [movieData, episodeData, favMovies, favEpisodeIdList] = await Promise.all([
+      StorageProvider.getWatchedMovies(),
+      StorageProvider.getAllWatchedEpisodes(),
+      StorageProvider.getAllFavoriteMovies(),
+      StorageProvider.getAllFavorites(),
+    ]);
+    setMovies(movieData);
+    setEpisodes(episodeData);
+    setFavoriteMovieIds(new Set(favMovies.map(m => m.movieId)));
+    setFavoriteEpisodeIds(new Set(favEpisodeIdList));
+  }, []);
+
+  const silentRefreshRef = useRef(silentRefresh);
+  silentRefreshRef.current = silentRefresh;
+
+  useEffect(() => {
+    if (refreshRef) refreshRef(() => { silentRefreshRef.current(); });
+    return () => { refreshRef?.(null); };
+  }, []);
 
   // Register back handler with parent
   useEffect(() => {
@@ -175,6 +211,10 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
 
   const totalCount = movies.length + episodes.length;
   const query = searchQuery.trim().toLowerCase();
+
+  // Normalize movie rating: legacy entries used 1–10, new entries use 0–5 stars
+  const movieStars = (r: number) => (r > 5 ? r / 2 : r);
+  const movieRating10 = (r: number) => (r > 5 ? r : r * 2);
 
   // ── Group episodes by show ──
   const showGroups: ShowGroup[] = useMemo(() => {
@@ -247,45 +287,48 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
     setTvLevel('shows');
   };
 
-  // ── Render: unified movie row ──
+  // ── Render: unified movie row (card design matching show cards) ──
   const renderMovieRow = (item: WatchedMovie, index: number) => (
-    <SwipeableRow onDelete={() => handleRemoveMovie(item.movieId, item.watchedDate)} height={80}>
+    <SwipeableRow onDelete={() => handleRemoveMovie(item.movieId, item.watchedDate)}>
       <TouchableOpacity
-        style={styles.row}
+        style={tvStyles.showCard}
         onPress={() => onSelectMovie?.(item.movieId)}
         activeOpacity={0.7}
       >
-        <View style={styles.timeline}>
-          <View style={[styles.timelineDot, { backgroundColor: getRatingColor(item.rating) }]} />
-          {index < unifiedItems.length - 1 && <View style={styles.timelineLine} />}
-        </View>
-        <Image
-          source={{ uri: tmdbService.getImageUrl(item.posterPath) }}
-          style={styles.poster}
-        />
-        <View style={styles.info}>
-          <Text style={styles.title} numberOfLines={1}>{item.title}</Text>
-          <Text style={styles.meta}>
+        {item.posterPath ? (
+          <Image
+            source={{ uri: tmdbService.getImageUrl(item.posterPath) }}
+            style={tvStyles.showPoster}
+          />
+        ) : (
+          <View style={[tvStyles.showPoster, tvStyles.posterPlaceholder]}>
+            <Ionicons name="film-outline" size={20} color={COLORS.text.muted} />
+          </View>
+        )}
+
+        <View style={tvStyles.showInfo}>
+          <Text style={tvStyles.showName} numberOfLines={1}>{item.title}</Text>
+          <Text style={tvStyles.showMeta}>
             {item.releaseDate?.split('-')[0]} · {item.runtime}m
           </Text>
-          <View style={styles.bottomRow}>
-            <View style={styles.genreRow}>
-              {item.genres.slice(0, 2).map((genre, idx) => (
-                <Text key={idx} style={styles.genreText}>{genre}</Text>
-              ))}
-            </View>
-            <Text style={styles.dateText}>{formatDate(item.watchedDate)}</Text>
+          <View style={tvStyles.showBottomRow}>
+            {item.rating > 0 ? (
+              <View style={tvStyles.avgRatingWrap}>
+                <Ionicons name="star" size={11} color={COLORS.primary} />
+                <Text style={tvStyles.avgRatingText}>{movieStars(item.rating).toFixed(1)}</Text>
+              </View>
+            ) : null}
+            {item.liked && (
+              <Ionicons name="heart" size={12} color={COLORS.coral} />
+            )}
+            {favoriteMovieIds.has(item.movieId) && (
+              <Ionicons name="star" size={12} color={COLORS.primary} />
+            )}
+            <Text style={tvStyles.showDate}>{formatDate(item.watchedDate)}</Text>
           </View>
         </View>
-        <View style={styles.ratingCol}>
-          {favoriteMovieIds.has(item.movieId) && (
-            <Ionicons name="star" size={12} color={COLORS.primary} style={{ marginBottom: 2 }} />
-          )}
-          <Text style={[styles.ratingValue, { color: getRatingColor(item.rating) }]}>
-            {item.rating}
-          </Text>
-          <Text style={styles.ratingMax}>/10</Text>
-        </View>
+
+        <Ionicons name="chevron-forward" size={16} color={COLORS.text.muted} />
       </TouchableOpacity>
     </SwipeableRow>
   );
@@ -305,11 +348,6 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
         onPress={() => drillIntoShow(item.seriesId)}
         activeOpacity={0.7}
       >
-        <View style={styles.timeline}>
-          <View style={[styles.timelineDot, { backgroundColor: avgRating > 0 ? COLORS.primary : COLORS.text.muted }]} />
-          {index < unifiedItems.length - 1 && <View style={styles.timelineLine} />}
-        </View>
-
         {item.episodes[0]?.stillPath ? (
           <Image
             source={{ uri: tmdbService.getImageUrl(item.episodes[0].stillPath, 'w300') }}
@@ -348,6 +386,65 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
     return renderShowCard(item.data, index);
   };
 
+  // ── Edit episode handler ──
+  const openEpisodeEdit = useCallback((item: WatchedEpisode) => {
+    // Construct minimal Episode for the modal display
+    const ep: Episode = {
+      id: item.episodeId,
+      name: item.episodeName || `Episode ${item.episodeNumber}`,
+      episode_number: item.episodeNumber,
+      season_number: item.seasonNumber,
+      still_path: item.stillPath ?? null,
+      air_date: '',
+      overview: '',
+      vote_average: 0,
+      runtime: item.runtime,
+    };
+    setEditEpisode(ep);
+    setEditShow({ name: item.seriesName || 'Unknown Show' });
+    setEditInitialData({
+      rating: item.rating,
+      liked: item.liked,
+      review: item.review ?? '',
+      tags: item.tags?.join(', ') ?? '',
+      rewatch: item.rewatch,
+      noSpoilers: item.noSpoilers,
+      watchedDate: new Date(item.watchedDate),
+    });
+    setEditWatchedEntry(item);
+    setEditModalVisible(true);
+  }, []);
+
+  const handleConfirmEpisodeEdit = useCallback(async (data: {
+    rating: number; liked: boolean; review: string; tags: string;
+    rewatch: boolean; noSpoilers: boolean; watchedDate: Date;
+  }) => {
+    if (!editWatchedEntry) return;
+
+    const updated: WatchedEpisode = {
+      ...editWatchedEntry,
+      rating: data.rating,
+      liked: data.liked,
+      review: data.review.trim() || undefined,
+      tags: data.tags.trim() ? data.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
+      rewatch: data.rewatch,
+      noSpoilers: data.noSpoilers,
+      watchedDate: data.watchedDate.toISOString(),
+    };
+
+    await StorageProvider.markEpisodeAsWatched(updated);
+    setEditModalVisible(false);
+    setEditEpisode(null);
+    setEditShow(null);
+    setEditInitialData(null);
+    setEditWatchedEntry(null);
+
+    // Refresh data
+    const episodeData = await StorageProvider.getAllWatchedEpisodes();
+    setEpisodes(episodeData);
+    setSnackbar({ message: `Updated S${updated.seasonNumber}E${updated.episodeNumber}` });
+  }, [editWatchedEntry]);
+
   // ── Render: Episode rows ──
   const renderEpisodeRow = ({ item }: { item: WatchedEpisode }) => {
     const starRating = item.rating || 0;
@@ -356,6 +453,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
         <TouchableOpacity
           style={tvStyles.episodeRow}
           activeOpacity={0.7}
+          onPress={() => openEpisodeEdit(item)}
         >
           <View style={tvStyles.epNumberWrap}>
             <Text style={tvStyles.epNumber}>{item.episodeNumber}</Text>
@@ -455,6 +553,15 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
             showsVerticalScrollIndicator={false}
           />
         </View>
+        <WatchedEpisodeModal
+          visible={editModalVisible}
+          episode={editEpisode}
+          show={editShow as any}
+          onClose={() => { setEditModalVisible(false); setEditEpisode(null); setEditShow(null); setEditInitialData(null); setEditWatchedEntry(null); }}
+          onConfirm={handleConfirmEpisodeEdit}
+          initialData={editInitialData}
+        />
+        <Snackbar config={snackbar} onDismiss={() => setSnackbar(null)} />
       </SafeAreaView>
     );
   }
@@ -541,15 +648,18 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
                 colors={[COLORS.primary]}
               />
             }
-            ListHeaderComponent={
-              <>
-                {onOpenWrapped && <WrappedBanner onPress={onOpenWrapped} />}
-                <Text style={styles.longPressHint}>Long-press an entry to remove it</Text>
-              </>
-            }
           />
         )}
       </View>
+      <WatchedEpisodeModal
+        visible={editModalVisible}
+        episode={editEpisode}
+        show={editShow as any}
+        onClose={() => { setEditModalVisible(false); setEditEpisode(null); setEditShow(null); setEditInitialData(null); setEditWatchedEntry(null); }}
+        onConfirm={handleConfirmEpisodeEdit}
+        initialData={editInitialData}
+      />
+      <Snackbar config={snackbar} onDismiss={() => setSnackbar(null)} />
     </SafeAreaView>
   );
 };
@@ -732,15 +842,7 @@ const styles = StyleSheet.create({
   favFilterBtnActive: {
     backgroundColor: COLORS.primaryMuted,
     borderColor: COLORS.primary,
-  },
-  longPressHint: {
-    color: COLORS.text.muted,
-    fontFamily: FONTS.body,
-    fontSize: 11,
-    textAlign: 'center',
-    paddingVertical: SPACING.xs,
-    marginBottom: SPACING.xs,
-  },
+  }
 });
 
 // ── Wrapped Banner styles ──
@@ -793,7 +895,7 @@ const tvStyles = StyleSheet.create({
     backgroundColor: COLORS.card,
     borderRadius: BORDER_RADIUS.m,
     padding: SPACING.s,
-    marginBottom: SPACING.s,
+    marginTop: SPACING.s,
     gap: SPACING.s,
     borderWidth: 1,
     borderColor: COLORS.borderLight,

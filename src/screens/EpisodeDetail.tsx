@@ -11,6 +11,7 @@ import { StorageProvider } from '../services/StorageProvider';
 import { Episode, TVShowDetail, SeasonSummary, WatchedEpisode } from '../types';
 import { WatchedEpisodeModal } from '../components/WatchedEpisodeModal';
 import { SeasonBrowser } from '../components/SeasonBrowser';
+import { Snackbar, SnackbarConfig } from '../components/Snackbar';
 
 interface EpisodeDetailProps {
   route?: { params: { tvId: number; seasonNumber: number; episodeNumber: number } };
@@ -34,6 +35,11 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
   const [watchedModalVisible, setWatchedModalVisible] = useState(false);
   const [watchedEpisode, setWatchedEpisode] = useState<Episode | null>(null);
   const [watchedEpisodeIds, setWatchedEpisodeIds] = useState<Set<number>>(new Set());
+  const [editInitialData, setEditInitialData] = useState<{
+    rating?: number; liked?: boolean; review?: string; tags?: string;
+    rewatch?: boolean; noSpoilers?: boolean; watchedDate?: Date;
+  } | null>(null);
+  const [snackbar, setSnackbar] = useState<SnackbarConfig | null>(null);
   const [trailerKey, setTrailerKey] = useState<string | null>(null);
   const [trailerExpanded, setTrailerExpanded] = useState(false);
   const [trailerReady, setTrailerReady] = useState(false);
@@ -117,6 +123,27 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
 
   const openWatchedModal = useCallback((ep: Episode) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setEditInitialData(null);
+    setWatchedEpisode(ep);
+    setWatchedModalVisible(true);
+  }, []);
+
+  const openEditWatchedModal = useCallback(async (ep: Episode) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const existing = await StorageProvider.getWatchedEpisode(ep.id);
+    if (existing) {
+      setEditInitialData({
+        rating: existing.rating,
+        liked: existing.liked,
+        review: existing.review ?? '',
+        tags: existing.tags?.join(', ') ?? '',
+        rewatch: existing.rewatch,
+        noSpoilers: existing.noSpoilers,
+        watchedDate: new Date(existing.watchedDate),
+      });
+    } else {
+      setEditInitialData(null);
+    }
     setWatchedEpisode(ep);
     setWatchedModalVisible(true);
   }, []);
@@ -175,8 +202,15 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
       }
     }
 
+    const isEdit = !!editInitialData;
     setWatchedModalVisible(false);
     setWatchedEpisode(null);
+    setEditInitialData(null);
+    setSnackbar({
+      message: isEdit
+        ? `Updated S${entry.seasonNumber}E${entry.episodeNumber}`
+        : `Logged S${entry.seasonNumber}E${entry.episodeNumber}`,
+    });
   };
 
   const formatDate = (date: Date) => {
@@ -225,8 +259,8 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
     }
   };
 
-  const formatRuntime = (mins?: number) => {
-    if (!mins) return '45m';
+  const formatRuntime = (mins?: number): string | null => {
+    if (!mins) return null;
     const h = Math.floor(mins / 60);
     const m = mins % 60;
     return h > 0 ? `${h}h ${m}m` : `${m}m`;
@@ -328,8 +362,12 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
           {/* Meta line */}
           <View style={styles.metaRow}>
             <Text style={styles.metaText}>{episode.air_date}</Text>
-            <View style={styles.metaDot} />
-            <Text style={styles.metaText}>{formatRuntime(episode.runtime)}</Text>
+            {formatRuntime(episode.runtime) && (
+              <>
+                <View style={styles.metaDot} />
+                <Text style={styles.metaText}>{formatRuntime(episode.runtime)}</Text>
+              </>
+            )}
           </View>
 
           {/* Genres */}
@@ -378,7 +416,7 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
           {/* Overview */}
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>ABOUT</Text>
-            <Text style={styles.overview}>{show.overview || 'No overview available.'}</Text>
+            <Text style={styles.overview}>{episode.overview || 'No overview available.'}</Text>
           </View>
 
           {/* Show Info */}
@@ -471,6 +509,7 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
             watchedEpisodeIds={watchedEpisodeIds}
             onSelectEpisode={selectEpisode}
             onOpenWatchedModal={openWatchedModal}
+            onEditWatchedEntry={openEditWatchedModal}
             onWatchedIdsChange={setWatchedEpisodeIds}
           />
         </View>
@@ -490,9 +529,11 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
         visible={watchedModalVisible}
         episode={watchedEpisode}
         show={show}
-        onClose={() => { setWatchedModalVisible(false); setWatchedEpisode(null); }}
+        onClose={() => { setWatchedModalVisible(false); setWatchedEpisode(null); setEditInitialData(null); }}
         onConfirm={handleConfirmWatched}
+        initialData={editInitialData}
       />
+      <Snackbar config={snackbar} onDismiss={() => setSnackbar(null)} />
     </View>
   );
 };

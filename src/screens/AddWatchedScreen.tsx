@@ -36,26 +36,36 @@ export const AddWatchedScreen: React.FC<AddWatchedScreenProps> = ({ onClose }) =
   const [isEditMode, setIsEditMode] = useState(false);
   const [existingEntry, setExistingEntry] = useState<WatchedMovie | null>(null);
   const searchInputRef = useRef<TextInput>(null);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => {
       searchInputRef.current?.focus();
     });
-    return () => task.cancel();
+    return () => {
+      task.cancel();
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    };
   }, []);
 
-  const handleSearch = useCallback(async (text: string) => {
-    setQuery(text);
+  const performSearch = useCallback(async (text: string) => {
     if (text.length < 2) {
       setResults([]);
       return;
     }
-    
     setLoading(true);
     const data = await tmdbService.search(text);
     setResults(data.filter((item: SearchResult) => item.media_type === 'movie'));
     setLoading(false);
   }, []);
+
+  const handleSearch = useCallback((text: string) => {
+    setQuery(text);
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => {
+      performSearch(text);
+    }, 500);
+  }, [performSearch]);
 
   const handleSelectMovie = async (item: SearchResult) => {
     setLoading(true);

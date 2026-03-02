@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ImageBackground, Platform, ActivityIndicator, Animated, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ImageBackground, Platform, ActivityIndicator, Animated, Dimensions, Modal, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,7 +8,10 @@ import YoutubePlayer from 'react-native-youtube-iframe';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, LAYOUT, getRatingColor } from '../constants/theme';
 import { tmdbService } from '../services/tmdbService';
 import { StorageProvider } from '../services/StorageProvider';
-import { MovieDetail as MovieDetailType } from '../types';
+import { MovieDetail as MovieDetailType, WatchedMovie } from '../types';
+import { DatePickerModal } from '../components/DatePicker';
+import { SwipeableStars } from '../components/SwipeableStars';
+import { Snackbar, SnackbarConfig } from '../components/Snackbar';
 
 interface MovieDetailProps {
   route?: { params: { movieId: number } };
@@ -26,6 +29,20 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
   const [trailerKey, setTrailerKey] = useState<string | null>(null);
   const [trailerPlaying, setTrailerPlaying] = useState(false);
 
+  // Log / Rate state
+  const [isWatched, setIsWatched] = useState(false);
+  const [existingEntry, setExistingEntry] = useState<WatchedMovie | null>(null);
+  const [ratingModalVisible, setRatingModalVisible] = useState(false);
+  const [rating, setRating] = useState(0);
+  const [liked, setLiked] = useState(false);
+  const [review, setReview] = useState('');
+  const [tags, setTags] = useState('');
+  const [rewatch, setRewatch] = useState(false);
+  const [noSpoilers, setNoSpoilers] = useState(false);
+  const [watchedDate, setWatchedDate] = useState(new Date());
+  const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const [snackbar, setSnackbar] = useState<SnackbarConfig | null>(null);
+
   useEffect(() => {
     loadData();
   }, [movieId]);
@@ -40,12 +57,15 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
       setMovie(data);
 
       if (data) {
-        const [watchlist, favStatus] = await Promise.all([
+        const [watchlist, favStatus, watchedEntry] = await Promise.all([
           StorageProvider.getWatchlist(),
           StorageProvider.isMovieFavorite(movieId),
+          StorageProvider.isMovieWatched(movieId),
         ]);
         setIsInWatchlist(!!watchlist.find(item => item.seriesId === movieId));
         setIsFavorite(favStatus);
+        setIsWatched(!!watchedEntry);
+        setExistingEntry(watchedEntry);
 
         // Fetch IMDb rating
         if (data.imdb_id) {
@@ -102,6 +122,82 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
       addedDate: new Date().toISOString(),
     } : undefined);
     setIsFavorite(newState);
+  };
+
+  const openLogModal = () => {
+    if (!movie) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (existingEntry) {
+      setRating(existingEntry.rating);
+      setLiked(existingEntry.liked ?? false);
+      setReview(existingEntry.review ?? '');
+      setTags(existingEntry.tags?.join(', ') ?? '');
+      setRewatch(existingEntry.rewatch ?? false);
+      setNoSpoilers(existingEntry.noSpoilers ?? false);
+      setWatchedDate(new Date(existingEntry.watchedDate));
+    } else {
+      setRating(0);
+      setLiked(false);
+      setReview('');
+      setTags('');
+      setRewatch(false);
+      setNoSpoilers(false);
+      setWatchedDate(new Date());
+    }
+    setRatingModalVisible(true);
+  };
+
+  const handleConfirmLog = async () => {
+    if (!movie) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    const parsedTags = tags.trim() ? tags.split(',').map(t => t.trim()).filter(Boolean) : undefined;
+
+    const watchedMovie: WatchedMovie = {
+      movieId: movie.id,
+      title: movie.title,
+      posterPath: movie.poster_path,
+      backdropPath: movie.backdrop_path,
+      rating,
+      watchedDate: watchedDate.toISOString(),
+      runtime: movie.runtime,
+      releaseDate: movie.release_date,
+      genres: movie.genres.map(g => g.name),
+      overview: movie.overview,
+      liked,
+      review: review.trim() || undefined,
+      tags: parsedTags,
+      rewatch,
+      noSpoilers,
+    };
+
+    if (existingEntry) {
+      // Remove old entry and add updated one
+      await StorageProvider.removeFromWatchedMovies(movieId, existingEntry.watchedDate);
+    }
+    await StorageProvider.addToWatchedMovies(watchedMovie);
+
+    setIsWatched(true);
+    setExistingEntry(watchedMovie);
+    setRatingModalVisible(false);
+    setSnackbar({
+      message: existingEntry ? `Updated ${movie.title}` : `Logged ${movie.title}`,
+    });
+  };
+
+  const handleCloseLogModal = () => {
+    setRating(0);
+    setLiked(false);
+    setReview('');
+    setTags('');
+    setRewatch(false);
+    setNoSpoilers(false);
+    setWatchedDate(new Date());
+    setRatingModalVisible(false);
+  };
+
+  const formatLogDate = (date: Date) => {
+    return date.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   };
 
   // Skeleton shimmer animation
@@ -240,6 +336,22 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
             ))}
           </View>
 
+          {/* Log as Watched Button */}
+          <TouchableOpacity
+            style={[styles.logButton, isWatched && styles.logButtonWatched]}
+            onPress={openLogModal}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={isWatched ? "checkmark-circle" : "add-circle-outline"}
+              size={20}
+              color={isWatched ? COLORS.teal : COLORS.text.inverse}
+            />
+            <Text style={[styles.logButtonText, isWatched && styles.logButtonTextWatched]}>
+              {isWatched ? 'Watched' : 'Log as Watched'}
+            </Text>
+          </TouchableOpacity>
+
           {/* Action Buttons */}
           <View style={styles.actionRow}>
             <TouchableOpacity
@@ -314,6 +426,154 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
           )}
         </View>
       </ScrollView>
+
+      {/* Log / Rate Modal — same design as TV episode modal */}
+      <Modal
+        visible={ratingModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={handleCloseLogModal}
+      >
+        <View style={logStyles.overlay}>
+          <View style={logStyles.container}>
+            {/* Header */}
+            <View style={logStyles.header}>
+              <TouchableOpacity onPress={handleCloseLogModal} style={logStyles.headerBtn}>
+                <Ionicons name="close" size={22} color={COLORS.text.primary} />
+              </TouchableOpacity>
+              <Text style={logStyles.headerTitle}>I Watched</Text>
+              <TouchableOpacity onPress={handleConfirmLog} style={logStyles.headerBtn}>
+                <Ionicons name="checkmark" size={22} color={COLORS.text.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={logStyles.body} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {/* Movie info */}
+              {movie && (
+                <View style={logStyles.movieInfo}>
+                  {movie.poster_path ? (
+                    <Image
+                      source={{ uri: tmdbService.getImageUrl(movie.poster_path, 'w185') }}
+                      style={logStyles.movieThumb}
+                    />
+                  ) : (
+                    <View style={[logStyles.movieThumb, logStyles.thumbPlaceholder]}>
+                      <Ionicons name="film-outline" size={20} color={COLORS.text.muted} />
+                    </View>
+                  )}
+                  <View style={logStyles.movieText}>
+                    <Text style={logStyles.movieTitle} numberOfLines={2}>{movie.title}</Text>
+                    <Text style={logStyles.movieSub} numberOfLines={1}>
+                      {movie.release_date?.split('-')[0]} · {movie.runtime}m
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {/* Date */}
+              <TouchableOpacity style={logStyles.row} onPress={() => setDatePickerVisible(true)} activeOpacity={0.7}>
+                <Text style={logStyles.rowLabel}>Date</Text>
+                <View style={logStyles.dateRight}>
+                  <Ionicons name="calendar-outline" size={16} color={COLORS.text.secondary} />
+                  <Text style={logStyles.dateText}>{formatLogDate(watchedDate)}</Text>
+                  <Ionicons name="chevron-forward" size={16} color={COLORS.text.muted} />
+                </View>
+              </TouchableOpacity>
+              <View style={logStyles.separator} />
+
+              <DatePickerModal
+                visible={datePickerVisible}
+                date={watchedDate}
+                onConfirm={(d) => { setWatchedDate(d); setDatePickerVisible(false); }}
+                onCancel={() => setDatePickerVisible(false)}
+              />
+
+              {/* Star rating + Like */}
+              <View style={logStyles.ratingLikeRow}>
+                <View style={logStyles.starsWrap}>
+                  <SwipeableStars value={rating} onChange={setRating} />
+                  <Text style={logStyles.starsLabel}>{rating > 0 ? 'Rated' : 'Rate'}</Text>
+                </View>
+                <TouchableOpacity
+                  style={logStyles.likeWrap}
+                  onPress={() => setLiked(!liked)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name={liked ? "heart" : "heart-outline"}
+                    size={36}
+                    color={liked ? COLORS.coral : COLORS.text.muted}
+                  />
+                  <Text style={logStyles.likeLabel}>Like</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={logStyles.separator} />
+
+              {/* Review */}
+              <TextInput
+                style={logStyles.reviewInput}
+                placeholder="Add review..."
+                placeholderTextColor={COLORS.text.muted}
+                value={review}
+                onChangeText={setReview}
+                multiline
+                textAlignVertical="top"
+              />
+              <View style={logStyles.separator} />
+
+              {/* Tags */}
+              <TextInput
+                style={logStyles.tagsInput}
+                placeholder="Add tags..."
+                placeholderTextColor={COLORS.text.muted}
+                value={tags}
+                onChangeText={setTags}
+              />
+              <View style={logStyles.separator} />
+
+              {/* Toggles */}
+              <View style={logStyles.toggleRow}>
+                <TouchableOpacity
+                  style={logStyles.toggleItem}
+                  onPress={() => setRewatch(!rewatch)}
+                  activeOpacity={0.7}
+                >
+                  <View style={logStyles.toggleIconWrap}>
+                    {rewatch && (
+                      <View style={logStyles.toggleCheck}>
+                        <Ionicons name="checkmark-circle" size={16} color={COLORS.teal} />
+                      </View>
+                    )}
+                    <Ionicons name="eye-outline" size={28} color={rewatch ? COLORS.text.primary : COLORS.text.muted} />
+                  </View>
+                  <Text style={[logStyles.toggleLabel, rewatch && logStyles.toggleLabelActive]}>
+                    {"I've seen this\nbefore"}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={logStyles.toggleItem}
+                  onPress={() => setNoSpoilers(!noSpoilers)}
+                  activeOpacity={0.7}
+                >
+                  <View style={logStyles.toggleIconWrap}>
+                    {noSpoilers && (
+                      <View style={logStyles.toggleCheck}>
+                        <Ionicons name="checkmark-circle" size={16} color={COLORS.teal} />
+                      </View>
+                    )}
+                    <Ionicons name="shield-outline" size={28} color={noSpoilers ? COLORS.text.primary : COLORS.text.muted} />
+                  </View>
+                  <Text style={[logStyles.toggleLabel, noSpoilers && logStyles.toggleLabelActive]}>
+                    No spoilers
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+      <Snackbar config={snackbar} onDismiss={() => setSnackbar(null)} />
     </View>
   );
 };
@@ -471,6 +731,29 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.bodyMedium,
     fontSize: 12,
   },
+  logButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: SPACING.m,
+    borderRadius: BORDER_RADIUS.s,
+    backgroundColor: COLORS.primary,
+    marginBottom: SPACING.s,
+  },
+  logButtonWatched: {
+    backgroundColor: 'rgba(45, 212, 168, 0.12)',
+    borderWidth: 1,
+    borderColor: COLORS.teal,
+  },
+  logButtonText: {
+    color: COLORS.text.inverse,
+    fontFamily: FONTS.heading,
+    fontSize: 15,
+  },
+  logButtonTextWatched: {
+    color: COLORS.teal,
+  },
   actionRow: {
     flexDirection: 'row',
     gap: SPACING.s,
@@ -608,5 +891,161 @@ const skelStyles = StyleSheet.create({
     width: '65%',
     backgroundColor: COLORS.card,
     borderRadius: BORDER_RADIUS.xs,
+  },
+});
+
+// ── Log / Rate Modal styles (matches WatchedEpisodeModal) ──
+const logStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  container: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.m,
+    paddingVertical: SPACING.s,
+    paddingTop: Platform.OS === 'android' ? 40 : 54,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+  },
+  headerBtn: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    color: COLORS.text.primary,
+    fontFamily: FONTS.display,
+    fontSize: 20,
+  },
+  body: {
+    flex: 1,
+    paddingHorizontal: SPACING.m,
+  },
+  movieInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.m,
+    paddingVertical: SPACING.m,
+  },
+  movieThumb: {
+    width: 50,
+    height: 75,
+    borderRadius: BORDER_RADIUS.xs,
+    backgroundColor: COLORS.card,
+  },
+  thumbPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  movieText: {
+    flex: 1,
+    gap: 2,
+  },
+  movieTitle: {
+    color: COLORS.text.primary,
+    fontFamily: FONTS.heading,
+    fontSize: 15,
+  },
+  movieSub: {
+    color: COLORS.text.secondary,
+    fontFamily: FONTS.body,
+    fontSize: 13,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.m,
+  },
+  rowLabel: {
+    color: COLORS.text.secondary,
+    fontFamily: FONTS.bodyMedium,
+    fontSize: 15,
+  },
+  dateRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  dateText: {
+    color: COLORS.text.primary,
+    fontFamily: FONTS.body,
+    fontSize: 14,
+  },
+  separator: {
+    height: 1,
+    backgroundColor: COLORS.primary,
+    opacity: 0.25,
+  },
+  ratingLikeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.l,
+  },
+  starsWrap: {
+    alignItems: 'flex-start',
+    gap: 6,
+  },
+  starsLabel: {
+    color: COLORS.text.secondary,
+    fontFamily: FONTS.body,
+    fontSize: 13,
+  },
+  likeWrap: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  likeLabel: {
+    color: COLORS.text.secondary,
+    fontFamily: FONTS.body,
+    fontSize: 13,
+  },
+  reviewInput: {
+    color: COLORS.text.primary,
+    fontFamily: FONTS.body,
+    fontSize: 15,
+    paddingVertical: SPACING.m,
+    minHeight: 100,
+  },
+  tagsInput: {
+    color: COLORS.text.primary,
+    fontFamily: FONTS.body,
+    fontSize: 15,
+    paddingVertical: SPACING.m,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: SPACING.xl,
+  },
+  toggleItem: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  toggleIconWrap: {
+    position: 'relative',
+  },
+  toggleCheck: {
+    position: 'absolute',
+    top: -6,
+    left: -6,
+    zIndex: 1,
+  },
+  toggleLabel: {
+    color: COLORS.text.muted,
+    fontFamily: FONTS.body,
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  toggleLabelActive: {
+    color: COLORS.text.secondary,
   },
 });

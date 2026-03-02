@@ -139,12 +139,17 @@ export interface WatchedMovie {
   title: string;
   posterPath: string | null;
   backdropPath: string | null;
-  rating: number; // 1-10
+  rating: number; // 0-5 stars (supports half: 0.5, 1, 1.5, ...)
   watchedDate: string; // ISO String
   runtime: number;
   releaseDate: string;
   genres: string[];
   overview: string;
+  liked?: boolean;
+  review?: string;
+  tags?: string[];
+  rewatch?: boolean;
+  noSpoilers?: boolean;
 }
 
 export interface FavoriteMovie {

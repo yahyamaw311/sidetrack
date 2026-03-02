@@ -26,8 +26,9 @@ const tmdbClient = axios.create({
   },
 });
 
-// --- In-memory cache (5 min TTL) ---
+// --- In-memory cache (5 min TTL, max 100 entries) ---
 const CACHE_TTL = 5 * 60 * 1000;
+const CACHE_MAX_SIZE = 100;
 const cache = new Map<string, { data: any; timestamp: number }>();
 
 function getCached<T>(key: string): T | null {
@@ -41,6 +42,11 @@ function getCached<T>(key: string): T | null {
 
 function setCache(key: string, data: any) {
   cache.set(key, { data, timestamp: Date.now() });
+  // Evict oldest entries when cache exceeds max size
+  if (cache.size > CACHE_MAX_SIZE) {
+    const keysToDelete = Array.from(cache.keys()).slice(0, cache.size - CACHE_MAX_SIZE);
+    keysToDelete.forEach(k => cache.delete(k));
+  }
 }
 
 // --- Concurrency limiter for IMDb calls ---
