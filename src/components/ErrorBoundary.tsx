@@ -5,6 +5,8 @@ import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
 
 interface Props {
     children: ReactNode;
+    /** Optional label shown in the fallback, e.g. "Explore" or "Watchlist" */
+    fallbackLabel?: string;
 }
 
 interface State {
@@ -32,13 +34,16 @@ export class ErrorBoundary extends Component<Props, State> {
 
     render() {
         if (this.state.hasError) {
+            const label = this.props.fallbackLabel;
             return (
                 <View style={styles.container}>
                     <View style={styles.content}>
                         <View style={styles.iconWrap}>
                             <Ionicons name="warning-outline" size={48} color={COLORS.coral} />
                         </View>
-                        <Text style={styles.title}>Something went wrong</Text>
+                        <Text style={styles.title}>
+                            {label ? `${label} crashed` : 'Something went wrong'}
+                        </Text>
                         <Text style={styles.message}>
                             {this.state.error?.message || 'An unexpected error occurred.'}
                         </Text>

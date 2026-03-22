@@ -4,15 +4,17 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { EpisodeDetail } from '../screens/EpisodeDetail';
 import { MovieDetail } from '../screens/MovieDetail';
 import { DiscoveryScreen } from '../screens/DiscoveryScreen';
 import { WatchlistScreen } from '../screens/WatchlistScreen';
 import { HistoryScreen } from '../screens/HistoryScreen';
+import { ProfileScreen } from '../screens/ProfileScreen';
 import { WrappedScreen } from '../screens/WrappedScreen';
 import { SearchResult } from '../types';
 
-type TabRoute = 'Explore' | 'Watchlist' | 'Log';
+type TabRoute = 'Explore' | 'Watchlist' | 'Log' | 'You';
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
 export const MainNavigation = () => {
@@ -170,8 +172,8 @@ export const MainNavigation = () => {
       if (prev) {
         setActiveTab(prev.tab);
         if (prev.show) {
-          // Going back to another detail — animate it in
-          setTimeout(() => animateDetailIn(prev.show!), 50);
+          // Going back to another detail — animate it in immediately (requestAnimationFrame is already inside animateDetailIn)
+          animateDetailIn(prev.show!);
         }
       }
     });
@@ -200,7 +202,7 @@ export const MainNavigation = () => {
         animateDetailOut(() => {
           setActiveTab(prev.tab);
           if (prev.show) {
-            setTimeout(() => animateDetailIn(prev.show!), 50);
+            animateDetailIn(prev.show!);
           }
         });
         return true;
@@ -239,18 +241,31 @@ export const MainNavigation = () => {
 
   return (
     <View style={styles.container}>
-      {/* Tab screens — lazy mounted */}
+      {/* Tab screens — lazy mounted, each wrapped in its own ErrorBoundary */}
       <View style={[styles.tabScreen, activeTab !== 'Explore' && styles.tabScreenHidden]}>
-        <DiscoveryScreen onSelectShow={handleSelectShow} onBackRef={(fn: (() => boolean) | null) => { discoveryBackRef.current = fn; }} refreshRef={(fn: (() => void) | null) => { discoveryRefreshRef.current = fn; }} />
+        <ErrorBoundary fallbackLabel="Explore">
+          <DiscoveryScreen onSelectShow={handleSelectShow} onBackRef={(fn: (() => boolean) | null) => { discoveryBackRef.current = fn; }} refreshRef={(fn: (() => void) | null) => { discoveryRefreshRef.current = fn; }} />
+        </ErrorBoundary>
       </View>
       {mountedTabs.has('Watchlist') && (
         <View style={[styles.tabScreen, activeTab !== 'Watchlist' && styles.tabScreenHidden]}>
-          <WatchlistScreen onSelectShow={handleSelectFromWatchlist} refreshRef={(fn: (() => void) | null) => { watchlistRefreshRef.current = fn; }} />
+          <ErrorBoundary fallbackLabel="Watchlist">
+            <WatchlistScreen onSelectShow={handleSelectFromWatchlist} refreshRef={(fn: (() => void) | null) => { watchlistRefreshRef.current = fn; }} onNavigateToExplore={() => handleTabChange('Explore')} />
+          </ErrorBoundary>
         </View>
       )}
       {mountedTabs.has('Log') && (
         <View style={[styles.tabScreen, activeTab !== 'Log' && styles.tabScreenHidden]}>
-          <HistoryScreen key={historyKey} onSelectMovie={handleSelectFromHistory} onSelectShow={handleSelectShowFromHistory} onOpenWrapped={handleOpenWrapped} onBackRef={(fn: (() => boolean) | null) => { historyBackRef.current = fn; }} refreshRef={(fn: (() => void) | null) => { historyRefreshRef.current = fn; }} />
+          <ErrorBoundary fallbackLabel="Watch Log">
+            <HistoryScreen key={historyKey} onSelectMovie={handleSelectFromHistory} onSelectShow={handleSelectShowFromHistory} onOpenWrapped={handleOpenWrapped} onBackRef={(fn: (() => boolean) | null) => { historyBackRef.current = fn; }} refreshRef={(fn: (() => void) | null) => { historyRefreshRef.current = fn; }} />
+          </ErrorBoundary>
+        </View>
+      )}
+      {mountedTabs.has('You') && (
+        <View style={[styles.tabScreen, activeTab !== 'You' && styles.tabScreenHidden]}>
+          <ErrorBoundary fallbackLabel="Profile">
+            <ProfileScreen onOpenWrapped={handleOpenWrapped} />
+          </ErrorBoundary>
         </View>
       )}
 
@@ -269,10 +284,12 @@ export const MainNavigation = () => {
             },
           ]}
         >
-          {visibleDetail.media_type === 'movie'
-            ? <MovieDetail route={{ params: { movieId: visibleDetail.id } }} onBack={handleBack} />
-            : <EpisodeDetail route={{ params: { tvId: visibleDetail.id, seasonNumber: 1, episodeNumber: 1 } }} onBack={handleBack} />
-          }
+          <ErrorBoundary fallbackLabel={visibleDetail.media_type === 'movie' ? 'Movie Detail' : 'Show Detail'}>
+            {visibleDetail.media_type === 'movie'
+              ? <MovieDetail route={{ params: { movieId: visibleDetail.id } }} onBack={handleBack} />
+              : <EpisodeDetail route={{ params: { tvId: visibleDetail.id, seasonNumber: 1, episodeNumber: 1 } }} onBack={handleBack} />
+            }
+          </ErrorBoundary>
         </Animated.View>
       )}
 
@@ -301,6 +318,14 @@ export const MainNavigation = () => {
             isActive={activeTab === 'Log'}
             onPress={() => handleTabChange('Log')}
           />
+
+          <TabButton
+            icon="person-outline"
+            activeIcon="person"
+            label="You"
+            isActive={activeTab === 'You'}
+            onPress={() => handleTabChange('You')}
+          />
         </View>
       </BlurView>
 
@@ -320,7 +345,7 @@ export const MainNavigation = () => {
               <Ionicons name="close" size={24} color={COLORS.text.primary} />
             </TouchableOpacity>
             <View style={wrappedOverlayStyles.content}>
-              <Text style={wrappedOverlayStyles.lockEmoji}>🔒</Text>
+              <Ionicons name="lock-closed" size={48} color={COLORS.text.muted} />
               <Text style={wrappedOverlayStyles.lockTitle}>Not Yet!</Text>
               <Text style={wrappedOverlayStyles.lockSubtitle}>
                 Your Sidetrack Wrapped will be available on December 15th so we can gather more data on your watching habits.
@@ -330,7 +355,7 @@ export const MainNavigation = () => {
                 <Text style={wrappedOverlayStyles.countdownLabel}>until your Wrapped is ready</Text>
               </View>
               <Text style={wrappedOverlayStyles.encourageText}>
-                Keep logging movies & shows — the more you watch, the better your Wrapped will be! 🍿
+                Keep logging movies & shows — the more you watch, the better your Wrapped will be!
               </Text>
             </View>
           </View>

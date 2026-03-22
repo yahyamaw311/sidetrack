@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { WatchedEpisode, QueuedItem, WatchedMovie, FavoriteMovie, CurrentlyWatchingItem } from '../types';
+import { WatchedEpisode, QueuedItem, WatchedMovie, FavoriteMovie, CurrentlyWatchingItem, SearchResult } from '../types';
+import { notifyErrorGlobal } from '../contexts/ErrorNotifier';
 
 const STORAGE_KEYS = {
   WATCHED: '@sidetrack_watched',
@@ -8,15 +9,25 @@ const STORAGE_KEYS = {
   WATCHED_MOVIES: '@sidetrack_watched_movies',
   FAVORITE_MOVIES: '@sidetrack_favorite_movies',
   CURRENTLY_WATCHING: '@sidetrack_currently_watching',
+  SEARCH_HISTORY: '@sidetrack_search_history',
 };
 
 // --- Helper to get parsed JSON ---
 const getData = async <T>(key: string, defaultValue: T): Promise<T> => {
   try {
     const jsonValue = await AsyncStorage.getItem(key);
-    return jsonValue != null ? JSON.parse(jsonValue) : defaultValue;
+    if (jsonValue == null) return defaultValue;
+    try {
+      return JSON.parse(jsonValue);
+    } catch (parseError) {
+      // JSON is corrupted — this is critical
+      console.error(`Corrupted data in ${key}`, parseError);
+      notifyErrorGlobal(`Data corruption detected — some data may be missing`, 'storage');
+      return defaultValue;
+    }
   } catch (e) {
     console.error(`Error reading ${key}`, e);
+    notifyErrorGlobal(`Could not read your saved data`, 'storage');
     return defaultValue;
   }
 };
@@ -28,6 +39,8 @@ const setData = async (key: string, value: any) => {
     await AsyncStorage.setItem(key, jsonValue);
   } catch (e) {
     console.error(`Error saving ${key}`, e);
+    notifyErrorGlobal(`Could not save — your change may be lost`, 'storage');
+    throw e; // Re-throw so optimistic-update callers can roll back
   }
 };
 
@@ -111,9 +124,9 @@ export const StorageProvider = {
     await setData(STORAGE_KEYS.WATCHED_MOVIES, watched);
   },
 
-  updateWatchedMovieRating: async (movieId: number, newRating: number) => {
+  updateWatchedMovieRating: async (movieId: number, newRating: number, watchedDate: string) => {
     const watched = await getData<Record<string, WatchedMovie>>(STORAGE_KEYS.WATCHED_MOVIES, {});
-    const key = Object.keys(watched).find(k => watched[k].movieId === movieId);
+    const key = Object.keys(watched).find(k => watched[k].movieId === movieId && watched[k].watchedDate === watchedDate);
     if (key) {
       watched[key].rating = newRating;
       await setData(STORAGE_KEYS.WATCHED_MOVIES, watched);
@@ -201,5 +214,28 @@ export const StorageProvider = {
     // Count unique watched episodes
     const watchedIds = new Set(watchedForShow.map(w => w.episodeId));
     return watchedIds.size >= totalExpected;
+  },
+
+  // --- Search History (recently tapped items) ---
+  getSearchHistory: async (): Promise<SearchResult[]> => {
+    return await getData<SearchResult[]>(STORAGE_KEYS.SEARCH_HISTORY, []);
+  },
+
+  addSearchHistoryItem: async (item: SearchResult) => {
+    const MAX_ITEMS = 10;
+    const history = await getData<SearchResult[]>(STORAGE_KEYS.SEARCH_HISTORY, []);
+    // Remove duplicate by id+media_type
+    const filtered = history.filter(h => !(h.id === item.id && h.media_type === item.media_type));
+    filtered.unshift(item);
+    await setData(STORAGE_KEYS.SEARCH_HISTORY, filtered.slice(0, MAX_ITEMS));
+  },
+
+  removeSearchHistoryItem: async (id: number, mediaType: string) => {
+    const history = await getData<SearchResult[]>(STORAGE_KEYS.SEARCH_HISTORY, []);
+    await setData(STORAGE_KEYS.SEARCH_HISTORY, history.filter(h => !(h.id === id && h.media_type === mediaType)));
+  },
+
+  clearSearchHistory: async () => {
+    await setData(STORAGE_KEYS.SEARCH_HISTORY, []);
   },
 };

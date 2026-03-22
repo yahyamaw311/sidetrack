@@ -1,34 +1,27 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
-import NetInfo from '@react-native-community/netinfo';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING } from '../constants/theme';
+import { useNetwork } from '../contexts/NetworkContext';
 
 export const NetworkBanner: React.FC = () => {
-    const [isOffline, setIsOffline] = useState(false);
+    const { isOffline } = useNetwork();
     const [slideAnim] = useState(new Animated.Value(-50));
 
     useEffect(() => {
-        const unsubscribe = NetInfo.addEventListener((state) => {
-            const offline = !(state.isConnected && state.isInternetReachable !== false);
-            setIsOffline(offline);
-
-            Animated.timing(slideAnim, {
-                toValue: offline ? 0 : -50,
-                duration: 300,
-                useNativeDriver: true,
-            }).start();
-        });
-
-        return () => unsubscribe();
-    }, [slideAnim]);
+        Animated.timing(slideAnim, {
+            toValue: isOffline ? 0 : -50,
+            duration: 300,
+            useNativeDriver: true,
+        }).start();
+    }, [isOffline, slideAnim]);
 
     if (!isOffline) return null;
 
     return (
         <Animated.View style={[styles.banner, { transform: [{ translateY: slideAnim }] }]}>
             <Ionicons name="cloud-offline-outline" size={14} color={COLORS.text.inverse} />
-            <Text style={styles.text}>No internet connection</Text>
+            <Text style={styles.text}>No internet connection — cached data may be shown</Text>
         </Animated.View>
     );
 };

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ImageBackground, Platform, ActivityIndicator, Animated, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ImageBackground, Platform, ActivityIndicator, Animated, Dimensions, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,6 +8,8 @@ import YoutubePlayer from 'react-native-youtube-iframe';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, LAYOUT, getRatingColor } from '../constants/theme';
 import { tmdbService } from '../services/tmdbService';
 import { StorageProvider } from '../services/StorageProvider';
+import { DetailCache } from '../services/DetailCache';
+import { useNetwork } from '../contexts/NetworkContext';
 import { Episode, TVShowDetail, SeasonSummary, WatchedEpisode } from '../types';
 import { WatchedEpisodeModal } from '../components/WatchedEpisodeModal';
 import { SeasonBrowser } from '../components/SeasonBrowser';
@@ -20,12 +22,14 @@ interface EpisodeDetailProps {
 
 export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) => {
   const { tvId, seasonNumber: initialSeason, episodeNumber: initialEpisode } = route?.params || { tvId: 1399, seasonNumber: 1, episodeNumber: 1 };
+  const { isOffline } = useNetwork();
 
   const [episode, setEpisode] = useState<Episode | null>(null);
   const [show, setShow] = useState<TVShowDetail | null>(null);
   const [isFavorite, setIsFavorite] = useState(false);
   const [isInWatchlist, setIsInWatchlist] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [imdbRating, setImdbRating] = useState<string | null>(null);
   const [imdbVotes, setImdbVotes] = useState<string | null>(null);
@@ -64,56 +68,79 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
     loadData();
   }, [tvId]);
 
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = async (isRefresh = false) => {
+    if (!isRefresh) setLoading(true);
     setLoadError(false);
-    const [seasonData, showData] = await Promise.all([
+
+    // Attempt network fetch
+    let [seasonData, showData] = await Promise.all([
       tmdbService.getSeasonDetails(tvId, initialSeason),
       tmdbService.getTVShowDetails(tvId)
     ]);
+
+    // If network failed, try the offline cache
+    if (!showData) {
+      const cached = await DetailCache.getCachedTVShowDetail(tvId);
+      if (cached) showData = cached;
+    }
+    if (!seasonData) {
+      const cached = await DetailCache.getCachedSeasonDetail(tvId, initialSeason);
+      if (cached) seasonData = cached;
+    }
+
+    // Write fresh data to offline cache for next time
+    if (showData) {
+      DetailCache.cacheTVShowDetail(tvId, showData);
+    }
+    if (seasonData) {
+      DetailCache.cacheSeasonDetail(tvId, initialSeason, seasonData);
+    }
 
     if (showData) {
       setShow(showData);
       const watchlist = await StorageProvider.getWatchlist();
       setIsInWatchlist(!!watchlist.find(item => item.seriesId === tvId));
 
-      // Fetch show-level IMDb rating
-      const showImdbId = showData.external_ids?.imdb_id;
-      if (showImdbId) {
-        const showRating = await tmdbService.getIMDbRating(showImdbId);
-        if (showRating) {
-          setShowImdbRating(showRating.imdbRating);
-          setShowImdbVotes(showRating.imdbVotes);
+      // Fetch show-level IMDb rating (non-critical, skip if offline)
+      if (!isOffline) {
+        const showImdbId = showData.external_ids?.imdb_id;
+        if (showImdbId) {
+          const showRating = await tmdbService.getIMDbRating(showImdbId);
+          if (showRating) {
+            setShowImdbRating(showRating.imdbRating);
+            setShowImdbVotes(showRating.imdbVotes);
+          }
         }
-      }
 
-      // Fetch trailer
-      tmdbService.getTVTrailer(tvId).then(key => {
-        if (key) setTrailerKey(key);
-      });
+        // Fetch trailer
+        tmdbService.getTVTrailer(tvId).then(key => {
+          if (key) setTrailerKey(key);
+        });
+      }
     }
 
     if (seasonData) {
       const ep = seasonData.episodes.find(e => e.episode_number === initialEpisode);
       setEpisode(ep || null);
 
-
       if (ep) {
         const fav = await StorageProvider.isEpisodeFavorite(ep.id);
         setIsFavorite(fav);
 
-        // Fetch episode-specific IMDb rating
-        const omdb = await tmdbService.getIMDbEpisodeRating(tvId, ep.season_number, ep.episode_number);
-        if (omdb) {
-          setImdbRating(omdb.imdbRating);
-          setImdbVotes(omdb.imdbVotes);
+        // Fetch episode-specific IMDb rating (non-critical, skip if offline)
+        if (!isOffline) {
+          const omdb = await tmdbService.getIMDbEpisodeRating(tvId, ep.season_number, ep.episode_number);
+          if (omdb) {
+            setImdbRating(omdb.imdbRating);
+            setImdbVotes(omdb.imdbVotes);
+          }
         }
       }
     }
     if (!showData && !seasonData) {
       setLoadError(true);
     }
-    setLoading(false);
+    if (!isRefresh) setLoading(false);
 
     // Load watched episode IDs
     const allWatched = await StorageProvider.getAllWatchedEpisodes();
@@ -235,18 +262,24 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
   const toggleWatchlist = async () => {
     if (!show) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (isInWatchlist) {
-      await StorageProvider.removeFromWatchlist(tvId);
-      setIsInWatchlist(false);
-    } else {
-      await StorageProvider.addToWatchlist({
-        seriesId: tvId,
-        name: show.name,
-        posterPath: show.poster_path,
-        addedDate: new Date().toISOString(),
-        itemType: 'tv',
-      });
-      setIsInWatchlist(true);
+    const prev = isInWatchlist;
+    // Optimistic update — flip immediately
+    setIsInWatchlist(!prev);
+    try {
+      if (prev) {
+        await StorageProvider.removeFromWatchlist(tvId);
+      } else {
+        await StorageProvider.addToWatchlist({
+          seriesId: tvId,
+          name: show.name,
+          posterPath: show.poster_path,
+          addedDate: new Date().toISOString(),
+          itemType: 'tv',
+        });
+      }
+    } catch {
+      // Rollback on failure
+      setIsInWatchlist(prev);
     }
   };
 
@@ -254,8 +287,14 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
     if (episode) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       const newState = !isFavorite;
-      await StorageProvider.toggleFavoriteEpisode(episode.id, newState);
+      // Optimistic update
       setIsFavorite(newState);
+      try {
+        await StorageProvider.toggleFavoriteEpisode(episode.id, newState);
+      } catch {
+        // Rollback on failure
+        setIsFavorite(!newState);
+      }
     }
   };
 
@@ -283,6 +322,12 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
   }, [loading, shimmerAnim]);
 
   const shimmerOpacity = shimmerAnim.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0.6] });
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadData(true);
+    setRefreshing(false);
+  };
 
   if (loading) {
     return (
@@ -323,7 +368,7 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
         <View style={styles.centered}>
           <Ionicons name="cloud-offline-outline" size={40} color={COLORS.text.muted} />
           <Text style={styles.loadingText}>Failed to load show</Text>
-          <TouchableOpacity onPress={loadData} style={styles.retryButton}>
+          <TouchableOpacity onPress={() => loadData()} style={styles.retryButton}>
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -340,7 +385,18 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
 
   return (
     <View style={styles.container}>
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={COLORS.primary}
+            colors={[COLORS.primary]}
+          />
+        }
+      >
         {/* Full-bleed backdrop */}
         <ImageBackground
           source={{ uri: tmdbService.getImageUrl(episode.still_path || show.backdrop_path, 'w780') }}

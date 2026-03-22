@@ -1,6 +1,7 @@
 import axios from 'axios';
 import Constants from 'expo-constants';
 import { TMDBResponse, SearchResult, TVShowDetail, SeasonDetail, MovieDetail, EpisodeDetailData } from '../types';
+import { notifyErrorGlobal } from '../contexts/ErrorNotifier';
 
 const TMDB_API_KEY = Constants.expoConfig?.extra?.tmdbApiKey
   || process.env.EXPO_PUBLIC_TMDB_API_KEY
@@ -49,6 +50,18 @@ function setCache(key: string, data: any) {
   }
 }
 
+/** Drop all in-memory cached entries */
+function clearCache() {
+  cache.clear();
+}
+
+/** Drop cached entries whose key starts with the given prefix */
+function invalidatePrefix(prefix: string) {
+  for (const key of Array.from(cache.keys())) {
+    if (key.startsWith(prefix)) cache.delete(key);
+  }
+}
+
 // --- Concurrency limiter for IMDb calls ---
 const MAX_CONCURRENT = 3;
 let activeCount = 0;
@@ -71,6 +84,12 @@ async function withConcurrencyLimit<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 export const tmdbService = {
+  /** Drop all in-memory cached TMDB data */
+  clearCache,
+
+  /** Drop cached entries whose key starts with the given prefix */
+  invalidatePrefix,
+
   /**
    * Search for multi (TV, Movies)
    */
@@ -82,6 +101,7 @@ export const tmdbService = {
       return response.data.results;
     } catch (error) {
       console.error('TMDB Search Error:', error);
+      notifyErrorGlobal('Search failed — check your connection', 'api');
       return [];
     }
   },
@@ -95,6 +115,7 @@ export const tmdbService = {
       return response.data.results;
     } catch (error) {
       console.error('TMDB Trending Error:', error);
+      notifyErrorGlobal('Could not load trending shows', 'api');
       return [];
     }
   },
@@ -108,6 +129,45 @@ export const tmdbService = {
       return response.data.results;
     } catch (error) {
       console.error('TMDB Trending Movies Error:', error);
+      notifyErrorGlobal('Could not load trending movies', 'api');
+      return [];
+    }
+  },
+
+  /**
+   * Get Top Rated Movies
+   */
+  getTopRatedMovies: async (): Promise<SearchResult[]> => {
+    const cacheKey = 'top_rated_movies';
+    const cached = getCached<SearchResult[]>(cacheKey);
+    if (cached) return cached;
+    try {
+      const response = await tmdbClient.get<TMDBResponse<SearchResult>>('/movie/top_rated');
+      const results = response.data.results.map(r => ({ ...r, media_type: 'movie' as const }));
+      setCache(cacheKey, results);
+      return results;
+    } catch (error) {
+      console.error('TMDB Top Rated Error:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Discover movies by genre ID
+   */
+  discoverByGenre: async (genreId: number): Promise<SearchResult[]> => {
+    const cacheKey = `discover_genre_${genreId}`;
+    const cached = getCached<SearchResult[]>(cacheKey);
+    if (cached) return cached;
+    try {
+      const response = await tmdbClient.get<TMDBResponse<SearchResult>>('/discover/movie', {
+        params: { with_genres: genreId, sort_by: 'popularity.desc' },
+      });
+      const results = response.data.results.map(r => ({ ...r, media_type: 'movie' as const }));
+      setCache(cacheKey, results);
+      return results;
+    } catch (error) {
+      console.error('TMDB Discover Genre Error:', error);
       return [];
     }
   },
@@ -129,6 +189,7 @@ export const tmdbService = {
       return result;
     } catch (error) {
       console.error(`TMDB TV Detail Error (${tvId}):`, error);
+      notifyErrorGlobal('Could not load show details', 'api');
       return null;
     }
   },
@@ -146,6 +207,7 @@ export const tmdbService = {
       return response.data;
     } catch (error) {
       console.error(`TMDB Movie Detail Error (${movieId}):`, error);
+      notifyErrorGlobal('Could not load movie details', 'api');
       return null;
     }
   },

@@ -149,9 +149,9 @@ const StatValue: React.FC<{ value: string | number; label: string; icon?: string
     </View>
 );
 
-const SectionTitle: React.FC<{ text: string; emoji?: string }> = ({ text, emoji }) => (
+const SectionTitle: React.FC<{ text: string; icon?: string }> = ({ text, icon }) => (
     <View style={cardStyles.sectionTitleRow}>
-        {emoji && <Text style={cardStyles.emoji}>{emoji}</Text>}
+        {icon && <Ionicons name={icon as any} size={22} color={COLORS.primary} />}
         <Text style={cardStyles.sectionTitle}>{text}</Text>
     </View>
 );
@@ -190,7 +190,7 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
     cards.push({
         content: (
             <View style={cardStyles.centered}>
-                <Text style={cardStyles.heroEmoji}>🎬</Text>
+                <Ionicons name="videocam" size={48} color={COLORS.primary} style={{ marginBottom: SPACING.m }} />
                 <Text style={cardStyles.heroTitle}>Your {year}{`\n`}Sidetrack Wrapped</Text>
                 <Text style={cardStyles.heroSubtitle}>Here's everything you watched</Text>
                 <View style={cardStyles.heroStatsRow}>
@@ -207,7 +207,7 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
     cards.push({
         content: (
             <View style={cardStyles.centered}>
-                <Text style={cardStyles.heroEmoji}>⏱️</Text>
+                <Ionicons name="time-outline" size={48} color={COLORS.primary} style={{ marginBottom: SPACING.m }} />
                 <Text style={cardStyles.bigNumber}>{stats.totalHoursWatched}</Text>
                 <Text style={cardStyles.bigLabel}>hours watched</Text>
                 <Text style={cardStyles.funFact}>{stats.funTimeEquivalent}</Text>
@@ -233,14 +233,14 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
         cards.push({
             content: (
                 <View>
-                    <SectionTitle text="Your Top Movies" emoji="🏆" />
+                    <SectionTitle text="Your Top Movies" icon="trophy-outline" />
                     {stats.highestRatedMovies.map((m, i) => (
                         <RankRow key={i} rank={i + 1} text={m.title} subtext={`${m.rating > 5 ? (m.rating / 2).toFixed(1) : m.rating}★`} color={COLORS.primary} />
                     ))}
                     {stats.lowestRatedMovies.length > 0 && (
                         <>
                             <View style={{ marginTop: SPACING.l }} />
-                            <SectionTitle text="Lowest Rated" emoji="👎" />
+                            <SectionTitle text="Lowest Rated" icon="thumbs-down-outline" />
                             {stats.lowestRatedMovies.slice(0, 3).map((m, i) => (
                                 <RankRow key={i} rank={i + 1} text={m.title} subtext={`${m.rating > 5 ? (m.rating / 2).toFixed(1) : m.rating}★`} color={COLORS.coral} />
                             ))}
@@ -256,7 +256,7 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
         cards.push({
             content: (
                 <View>
-                    <SectionTitle text="Your Top Shows" emoji="📺" />
+                    <SectionTitle text="Your Top Shows" icon="tv-outline" />
                     {stats.highestRatedShows.map((s, i) => (
                         <RankRow key={i} rank={i + 1} text={s.name} subtext={`${s.avgRating}★ avg · ${s.episodeCount} eps rated`} color={COLORS.primary} />
                     ))}
@@ -275,7 +275,7 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
         cards.push({
             content: (
                 <View>
-                    <SectionTitle text="Genre Breakdown" emoji="🎭" />
+                    <SectionTitle text="Genre Breakdown" icon="grid-outline" />
                     <BarChart
                         data={stats.topGenres.slice(0, 8).map((g, i) => ({
                             label: g.genre,
@@ -286,7 +286,7 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
                     {stats.genreByAvgRating.length > 0 && (
                         <>
                             <View style={{ marginTop: SPACING.l }} />
-                            <SectionTitle text="Genre You Rate Highest" emoji="⭐" />
+                            <SectionTitle text="Genre You Rate Highest" icon="star-outline" />
                             <RankRow rank={1} text={stats.genreByAvgRating[0].genre} subtext={`${stats.genreByAvgRating[0].avgRating}★ average`} color={COLORS.teal} />
                             {stats.genreByAvgRating.length > 1 && (
                                 <RankRow rank={2} text={stats.genreByAvgRating[1].genre} subtext={`${stats.genreByAvgRating[1].avgRating}★ average`} />
@@ -305,7 +305,7 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
         cards.push({
             content: (
                 <View>
-                    <SectionTitle text="How You Rate" emoji="⭐" />
+                    <SectionTitle text="How You Rate" icon="star-outline" />
                     <BarChart
                         data={ratingEntries.map(([rating, count]) => ({
                             label: `${rating}★`,
@@ -326,7 +326,7 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
     cards.push({
         content: (
             <View style={cardStyles.centered}>
-                <Text style={cardStyles.heroEmoji}>🔥</Text>
+                <Ionicons name="flame" size={48} color={COLORS.coral} style={{ marginBottom: SPACING.m }} />
                 <Text style={cardStyles.bigNumber}>{stats.longestStreak}</Text>
                 <Text style={cardStyles.bigLabel}>day streak</Text>
                 {stats.busiestDayOfWeek && (
@@ -360,7 +360,7 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
         cards.push({
             content: (
                 <View>
-                    <SectionTitle text="Monthly Activity" emoji="📅" />
+                    <SectionTitle text="Monthly Activity" icon="calendar-outline" />
                     <BarChart
                         data={monthEntries.slice(-12).map(([key, count]) => ({
                             label: months[parseInt(key.split('-')[1]) - 1] || key,
@@ -385,7 +385,7 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
         cards.push({
             content: (
                 <View>
-                    <SectionTitle text="Most Watched Shows" emoji="📺" />
+                    <SectionTitle text="Most Watched Shows" icon="tv-outline" />
                     {stats.showsWithMostEpisodes.map((s, i) => (
                         <RankRow key={i} rank={i + 1} text={s.name} subtext={`${s.count} episodes`} color={COLORS.teal} />
                     ))}
@@ -407,7 +407,7 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
         cards.push({
             content: (
                 <View>
-                    <SectionTitle text="Movie Time Machine" emoji="🎬" />
+                    <SectionTitle text="Movie Time Machine" icon="film-outline" />
                     {decadeEntries.length > 0 && (
                         <BarChart
                             data={decadeEntries.map(([decade, count]) => ({
@@ -436,7 +436,7 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
     cards.push({
         content: (
             <View>
-                <SectionTitle text="Your Engagement" emoji="❤️" />
+                <SectionTitle text="Your Engagement" icon="heart-outline" />
                 <View style={cardStyles.statsGrid}>
                     <StatValue value={stats.totalLikes} label="Likes Given" icon="heart" color={COLORS.coral} />
                     <StatValue value={stats.totalFavorites} label="Favorites" icon="star" color={COLORS.primary} />
@@ -470,7 +470,17 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
     cards.push({
         content: (
             <View style={cardStyles.centered}>
-                <Text style={[cardStyles.heroEmoji, { fontSize: 72 }]}>{stats.personalityType.emoji}</Text>
+                <Ionicons name={({
+                    'The Newcomer': 'leaf-outline',
+                    'The Binger': 'tv-outline',
+                    'The Critic': 'eye-outline',
+                    'The Enthusiast': 'sparkles-outline',
+                    'The Explorer': 'compass-outline',
+                    'The Reviewer': 'create-outline',
+                    'The Marathon Runner': 'speedometer-outline',
+                    'The Cinephile': 'film-outline',
+                    'The Balanced Viewer': 'scale-outline',
+                } as any)[stats.personalityType.label] || 'person-outline'} size={64} color={COLORS.primary} style={{ marginBottom: SPACING.m }} />
                 <Text style={cardStyles.personalityLabel}>You are</Text>
                 <Text style={cardStyles.personalityTitle}>{stats.personalityType.label}</Text>
                 <Text style={cardStyles.personalityDesc}>{stats.personalityType.description}</Text>
@@ -482,7 +492,7 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
     cards.push({
         content: (
             <View style={cardStyles.centered}>
-                <Text style={cardStyles.heroEmoji}>📊</Text>
+                <Ionicons name="analytics-outline" size={48} color={COLORS.primary} style={{ marginBottom: SPACING.m }} />
                 <Text style={cardStyles.sectionTitle}>Full Summary</Text>
                 <View style={cardStyles.summaryGrid}>
                     <SummaryRow icon="film" label="Movies" value={stats.totalMovies.toString()} />
@@ -495,7 +505,7 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
                     <SummaryRow icon="layers" label="Seasons" value={stats.totalSeasonsStarted.toString()} />
                     {stats.topGenres.length > 0 && <SummaryRow icon="musical-notes" label="Top Genre" value={stats.topGenres[0].genre} />}
                 </View>
-                <Text style={[cardStyles.swipeHint, { marginTop: SPACING.l }]}>That's a wrap! 🎉</Text>
+                <Text style={[cardStyles.swipeHint, { marginTop: SPACING.l }]}>That's a wrap!</Text>
             </View>
         ),
     });

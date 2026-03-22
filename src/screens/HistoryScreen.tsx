@@ -12,17 +12,84 @@ import {
   LayoutAnimation,
   RefreshControl,
   Animated,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, getRatingColor } from '../constants/theme';
 import { tmdbService } from '../services/tmdbService';
+
+import { SkeletonBox } from '../components/SkeletonBox';
+
+const HistorySkeleton = () => (
+  <View style={skelStyles.wrapper}>
+    {/* Fake search bar */}
+    <SkeletonBox style={skelStyles.searchBar} />
+    {/* Fake cards */}
+    {[0, 1, 2, 3, 4, 5].map(i => (
+      <View key={i} style={skelStyles.card}>
+        <SkeletonBox style={skelStyles.poster} />
+        <View style={skelStyles.textArea}>
+          <SkeletonBox style={skelStyles.titleBar} />
+          <SkeletonBox style={skelStyles.metaBar} />
+          <SkeletonBox style={skelStyles.ratingBar} />
+        </View>
+      </View>
+    ))}
+  </View>
+);
+
+const skelStyles = StyleSheet.create({
+  wrapper: {
+    flex: 1,
+    paddingHorizontal: SPACING.m,
+    paddingTop: SPACING.s
+  },
+  searchBar: {
+    height: 40,
+    borderRadius: BORDER_RADIUS.s,
+    marginBottom: SPACING.s
+  },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: BORDER_RADIUS.m,
+    padding: SPACING.s,
+    marginTop: SPACING.s,
+    gap: SPACING.s
+  },
+  poster: {
+    width: 64,
+    height: 48,
+    borderRadius: BORDER_RADIUS.xs
+  },
+  textArea: {
+    flex: 1,
+    gap: 6
+  },
+  titleBar: {
+    height: 14,
+    borderRadius: BORDER_RADIUS.xs,
+    width: '70%'
+  },
+  metaBar: {
+    height: 10,
+    borderRadius: BORDER_RADIUS.xs,
+    width: '45%'
+  },
+  ratingBar: {
+    height: 10,
+    borderRadius: BORDER_RADIUS.xs,
+    width: '30%'
+  }
+});
 import { StorageProvider } from '../services/StorageProvider';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { WatchedEpisodeModal } from '../components/WatchedEpisodeModal';
 import { Snackbar, SnackbarConfig } from '../components/Snackbar';
 import { WatchedMovie, WatchedEpisode, FavoriteMovie, Episode, TVShowDetail } from '../types';
+import { AddWatchedScreen } from './AddWatchedScreen';
 
 type TVDrillLevel = 'shows' | 'episodes';
 
@@ -45,6 +112,7 @@ interface HistoryScreenProps {
   onOpenWrapped?: () => void;
   onBackRef?: (fn: (() => boolean) | null) => void;
   refreshRef?: (fn: (() => void) | null) => void;
+  onNavigateToExplore?: () => void;
 }
 
 // ── Wrapped Banner ──
@@ -71,7 +139,7 @@ const WrappedBanner: React.FC<{ onPress: () => void }> = ({ onPress }) => {
         style={wrappedStyles.bannerGradient}
       >
         <Animated.View style={[wrappedStyles.bannerContent, { opacity: shimmerOpacity }]}>
-          <Text style={wrappedStyles.bannerEmoji}>🎬</Text>
+          <Ionicons name="videocam" size={24} color={COLORS.primary} />
         </Animated.View>
         <View style={wrappedStyles.bannerTextWrap}>
           <Text style={wrappedStyles.bannerTitle}>Your Sidetrack Wrapped</Text>
@@ -83,7 +151,7 @@ const WrappedBanner: React.FC<{ onPress: () => void }> = ({ onPress }) => {
   );
 };
 
-export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onSelectShow, onOpenWrapped, onBackRef, refreshRef }) => {
+export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onSelectShow, onOpenWrapped, onBackRef, refreshRef, onNavigateToExplore }) => {
   const [movies, setMovies] = useState<WatchedMovie[]>([]);
   const [episodes, setEpisodes] = useState<WatchedEpisode[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,6 +167,9 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
   const [tvLevel, setTvLevel] = useState<TVDrillLevel>('shows');
   const [selectedShowId, setSelectedShowId] = useState<number | null>(null);
 
+  // Add Movie Modal state
+  const [addModalVisible, setAddModalVisible] = useState(false);
+
   // Edit episode modal state
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editEpisode, setEditEpisode] = useState<Episode | null>(null);
@@ -110,8 +181,8 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
   const [editWatchedEntry, setEditWatchedEntry] = useState<WatchedEpisode | null>(null);
   const [snackbar, setSnackbar] = useState<SnackbarConfig | null>(null);
 
-  const loadHistory = useCallback(async () => {
-    setLoading(true);
+  // Single source of truth for fetching & setting history data
+  const fetchAndSetHistoryData = useCallback(async () => {
     const [movieData, episodeData, favMovies, favEpisodeIdList] = await Promise.all([
       StorageProvider.getWatchedMovies(),
       StorageProvider.getAllWatchedEpisodes(),
@@ -122,44 +193,28 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
     setEpisodes(episodeData);
     setFavoriteMovieIds(new Set(favMovies.map(m => m.movieId)));
     setFavoriteEpisodeIds(new Set(favEpisodeIdList));
-    setLoading(false);
   }, []);
+
+  const loadHistory = useCallback(async () => {
+    setLoading(true);
+    await fetchAndSetHistoryData();
+    setLoading(false);
+  }, [fetchAndSetHistoryData]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    const [movieData, episodeData, favMovies, favEpisodeIdList] = await Promise.all([
-      StorageProvider.getWatchedMovies(),
-      StorageProvider.getAllWatchedEpisodes(),
-      StorageProvider.getAllFavoriteMovies(),
-      StorageProvider.getAllFavorites(),
-    ]);
-    setMovies(movieData);
-    setEpisodes(episodeData);
-    setFavoriteMovieIds(new Set(favMovies.map(m => m.movieId)));
-    setFavoriteEpisodeIds(new Set(favEpisodeIdList));
+    await fetchAndSetHistoryData();
     setRefreshing(false);
-  }, []);
+  }, [fetchAndSetHistoryData]);
 
   useEffect(() => {
     loadHistory();
   }, [loadHistory]);
 
   // Expose silent refresh to parent for when detail overlay closes
-  const silentRefresh = useCallback(async () => {
-    const [movieData, episodeData, favMovies, favEpisodeIdList] = await Promise.all([
-      StorageProvider.getWatchedMovies(),
-      StorageProvider.getAllWatchedEpisodes(),
-      StorageProvider.getAllFavoriteMovies(),
-      StorageProvider.getAllFavorites(),
-    ]);
-    setMovies(movieData);
-    setEpisodes(episodeData);
-    setFavoriteMovieIds(new Set(favMovies.map(m => m.movieId)));
-    setFavoriteEpisodeIds(new Set(favEpisodeIdList));
-  }, []);
-
-  const silentRefreshRef = useRef(silentRefresh);
-  silentRefreshRef.current = silentRefresh;
+  // (reuses the single fetchAndSetHistoryData helper — no duplicated logic)
+  const silentRefreshRef = useRef(fetchAndSetHistoryData);
+  silentRefreshRef.current = fetchAndSetHistoryData;
 
   useEffect(() => {
     if (refreshRef) refreshRef(() => { silentRefreshRef.current(); });
@@ -181,13 +236,25 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
   }, [tvLevel, onBackRef]);
 
   const handleRemoveMovie = async (movieId: number, watchedDate: string) => {
-    await StorageProvider.removeFromWatchedMovies(movieId, watchedDate);
-    loadHistory();
+    // Optimistic removal
+    const prevMovies = movies;
+    setMovies(prev => prev.filter(m => !(m.movieId === movieId && m.watchedDate === watchedDate)));
+    try {
+      await StorageProvider.removeFromWatchedMovies(movieId, watchedDate);
+    } catch {
+      setMovies(prevMovies);
+    }
   };
 
   const handleRemoveEpisode = async (episodeId: number) => {
-    await StorageProvider.removeWatchedEpisode(episodeId);
-    loadHistory();
+    // Optimistic removal
+    const prevEpisodes = episodes;
+    setEpisodes(prev => prev.filter(e => e.episodeId !== episodeId));
+    try {
+      await StorageProvider.removeWatchedEpisode(episodeId);
+    } catch {
+      setEpisodes(prevEpisodes);
+    }
   };
 
   const formatDate = (isoDate: string) => {
@@ -529,8 +596,11 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.centered}>
-          <Text style={styles.loadingText}>Loading...</Text>
+        <View style={styles.safeArea}>
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>Watch Log</Text>
+          </View>
+          <HistorySkeleton />
         </View>
       </SafeAreaView>
     );
@@ -551,6 +621,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
             keyExtractor={item => `ep_${item.episodeId}`}
             contentContainerStyle={styles.list}
             showsVerticalScrollIndicator={false}
+            keyboardDismissMode="on-drag"
           />
         </View>
         <WatchedEpisodeModal
@@ -578,6 +649,13 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
             </View>
           )}
           <View style={{ flex: 1 }} />
+          <TouchableOpacity
+            onPress={() => setAddModalVisible(true)}
+            style={styles.favFilterBtn}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="add" size={20} color={COLORS.text.primary} />
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={() => {
               LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -628,6 +706,12 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
                   ? `No movies or shows matching "${searchQuery}"`
                   : 'Movies and TV shows you watch will appear here'}
             </Text>
+            {!showFavoritesOnly && !query && onNavigateToExplore && (
+              <TouchableOpacity style={styles.ctaButton} onPress={onNavigateToExplore} activeOpacity={0.8}>
+                <Ionicons name="compass-outline" size={18} color={COLORS.background} />
+                <Text style={styles.ctaText}>Browse Explore</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
           <FlatList
@@ -640,6 +724,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
             }
             contentContainerStyle={styles.list}
             showsVerticalScrollIndicator={false}
+            keyboardDismissMode="on-drag"
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -659,6 +744,9 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({ onSelectMovie, onS
         onConfirm={handleConfirmEpisodeEdit}
         initialData={editInitialData}
       />
+      <Modal visible={addModalVisible} animationType="slide" onRequestClose={() => setAddModalVisible(false)}>
+        <AddWatchedScreen onClose={() => { setAddModalVisible(false); loadHistory(); }} />
+      </Modal>
       <Snackbar config={snackbar} onDismiss={() => setSnackbar(null)} />
     </SafeAreaView>
   );
@@ -749,6 +837,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     paddingHorizontal: SPACING.xl,
+  },
+  ctaButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.l,
+    paddingVertical: SPACING.m,
+    borderRadius: BORDER_RADIUS.m,
+    marginTop: SPACING.l,
+    gap: SPACING.xs,
+  },
+  ctaText: {
+    color: COLORS.background,
+    fontFamily: FONTS.heading,
+    fontSize: 15,
   },
   list: {
     paddingHorizontal: SPACING.m,

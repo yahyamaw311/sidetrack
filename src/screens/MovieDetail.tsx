@@ -8,10 +8,13 @@ import YoutubePlayer from 'react-native-youtube-iframe';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, LAYOUT, getRatingColor } from '../constants/theme';
 import { tmdbService } from '../services/tmdbService';
 import { StorageProvider } from '../services/StorageProvider';
+import { DetailCache } from '../services/DetailCache';
+import { useNetwork } from '../contexts/NetworkContext';
 import { MovieDetail as MovieDetailType, WatchedMovie } from '../types';
 import { DatePickerModal } from '../components/DatePicker';
 import { SwipeableStars } from '../components/SwipeableStars';
 import { Snackbar, SnackbarConfig } from '../components/Snackbar';
+import { WatchedMovieModal } from '../components/WatchedMovieModal';
 
 interface MovieDetailProps {
   route?: { params: { movieId: number } };
@@ -20,6 +23,7 @@ interface MovieDetailProps {
 
 export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
   const { movieId } = route?.params || { movieId: 0 };
+  const { isOffline } = useNetwork();
   const [movie, setMovie] = useState<MovieDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [isFavorite, setIsFavorite] = useState(false);
@@ -33,14 +37,6 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
   const [isWatched, setIsWatched] = useState(false);
   const [existingEntry, setExistingEntry] = useState<WatchedMovie | null>(null);
   const [ratingModalVisible, setRatingModalVisible] = useState(false);
-  const [rating, setRating] = useState(0);
-  const [liked, setLiked] = useState(false);
-  const [review, setReview] = useState('');
-  const [tags, setTags] = useState('');
-  const [rewatch, setRewatch] = useState(false);
-  const [noSpoilers, setNoSpoilers] = useState(false);
-  const [watchedDate, setWatchedDate] = useState(new Date());
-  const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [snackbar, setSnackbar] = useState<SnackbarConfig | null>(null);
 
   useEffect(() => {
@@ -53,7 +49,19 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
     setLoading(true);
     setLoadError(false);
     if (movieId) {
-      const data = await tmdbService.getMovieDetails(movieId);
+      let data = await tmdbService.getMovieDetails(movieId);
+
+      // If network failed, try offline cache
+      if (!data) {
+        const cached = await DetailCache.getCachedMovieDetail(movieId);
+        if (cached) data = cached;
+      }
+
+      // Cache fresh data for offline use
+      if (data) {
+        DetailCache.cacheMovieDetail(movieId, data);
+      }
+
       setMovie(data);
 
       if (data) {
@@ -67,8 +75,8 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
         setIsWatched(!!watchedEntry);
         setExistingEntry(watchedEntry);
 
-        // Fetch IMDb rating
-        if (data.imdb_id) {
+        // Fetch IMDb rating (non-critical, skip if offline)
+        if (!isOffline && data.imdb_id) {
           const imdb = await tmdbService.getIMDbRating(data.imdb_id);
           if (imdb) {
             setImdbRating(imdb.imdbRating);
@@ -76,10 +84,12 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
           }
         }
 
-        // Fetch trailer
-        tmdbService.getMovieTrailer(movieId).then(key => {
-          if (key) setTrailerKey(key);
-        });
+        // Fetch trailer (non-critical, skip if offline)
+        if (!isOffline) {
+          tmdbService.getMovieTrailer(movieId).then(key => {
+            if (key) setTrailerKey(key);
+          });
+        }
       } else {
         setLoadError(true);
       }
@@ -90,18 +100,24 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
   const toggleWatchlist = async () => {
     if (!movie) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (isInWatchlist) {
-      await StorageProvider.removeFromWatchlist(movieId);
-      setIsInWatchlist(false);
-    } else {
-      await StorageProvider.addToWatchlist({
-        seriesId: movieId,
-        name: movie.title,
-        posterPath: movie.poster_path,
-        addedDate: new Date().toISOString(),
-        itemType: 'movie',
-      });
-      setIsInWatchlist(true);
+    const prev = isInWatchlist;
+    // Optimistic update — flip immediately
+    setIsInWatchlist(!prev);
+    try {
+      if (prev) {
+        await StorageProvider.removeFromWatchlist(movieId);
+      } else {
+        await StorageProvider.addToWatchlist({
+          seriesId: movieId,
+          name: movie.title,
+          posterPath: movie.poster_path,
+          addedDate: new Date().toISOString(),
+          itemType: 'movie',
+        });
+      }
+    } catch {
+      // Rollback on failure
+      setIsInWatchlist(prev);
     }
   };
 
@@ -115,64 +131,60 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
     if (!movie) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const newState = !isFavorite;
-    await StorageProvider.toggleFavoriteMovie(movieId, newState, newState ? {
-      movieId: movie.id,
-      title: movie.title,
-      posterPath: movie.poster_path,
-      addedDate: new Date().toISOString(),
-    } : undefined);
+    // Optimistic update
     setIsFavorite(newState);
+    try {
+      await StorageProvider.toggleFavoriteMovie(movieId, newState, newState ? {
+        movieId: movie.id,
+        title: movie.title,
+        posterPath: movie.poster_path,
+        addedDate: new Date().toISOString(),
+      } : undefined);
+    } catch {
+      // Rollback on failure
+      setIsFavorite(!newState);
+    }
   };
 
   const openLogModal = () => {
     if (!movie) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (existingEntry) {
-      setRating(existingEntry.rating);
-      setLiked(existingEntry.liked ?? false);
-      setReview(existingEntry.review ?? '');
-      setTags(existingEntry.tags?.join(', ') ?? '');
-      setRewatch(existingEntry.rewatch ?? false);
-      setNoSpoilers(existingEntry.noSpoilers ?? false);
-      setWatchedDate(new Date(existingEntry.watchedDate));
-    } else {
-      setRating(0);
-      setLiked(false);
-      setReview('');
-      setTags('');
-      setRewatch(false);
-      setNoSpoilers(false);
-      setWatchedDate(new Date());
-    }
     setRatingModalVisible(true);
   };
 
-  const handleConfirmLog = async () => {
+  const handleConfirmLog = async (data: {
+    rating: number;
+    liked: boolean;
+    review: string;
+    tags: string;
+    rewatch: boolean;
+    noSpoilers: boolean;
+    watchedDate: Date;
+  }) => {
     if (!movie) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    const parsedTags = tags.trim() ? tags.split(',').map(t => t.trim()).filter(Boolean) : undefined;
+    const parsedTags = data.tags.trim() ? data.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined;
 
     const watchedMovie: WatchedMovie = {
       movieId: movie.id,
       title: movie.title,
       posterPath: movie.poster_path,
       backdropPath: movie.backdrop_path,
-      rating,
-      watchedDate: watchedDate.toISOString(),
+      rating: data.rating,
+      watchedDate: data.watchedDate.toISOString(),
       runtime: movie.runtime,
       releaseDate: movie.release_date,
       genres: movie.genres.map(g => g.name),
       overview: movie.overview,
-      liked,
-      review: review.trim() || undefined,
+      liked: data.liked,
+      review: data.review.trim() || undefined,
       tags: parsedTags,
-      rewatch,
-      noSpoilers,
+      rewatch: data.rewatch,
+      noSpoilers: data.noSpoilers,
     };
 
     if (existingEntry) {
-      // Remove old entry and add updated one
       await StorageProvider.removeFromWatchedMovies(movieId, existingEntry.watchedDate);
     }
     await StorageProvider.addToWatchedMovies(watchedMovie);
@@ -183,21 +195,6 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
     setSnackbar({
       message: existingEntry ? `Updated ${movie.title}` : `Logged ${movie.title}`,
     });
-  };
-
-  const handleCloseLogModal = () => {
-    setRating(0);
-    setLiked(false);
-    setReview('');
-    setTags('');
-    setRewatch(false);
-    setNoSpoilers(false);
-    setWatchedDate(new Date());
-    setRatingModalVisible(false);
-  };
-
-  const formatLogDate = (date: Date) => {
-    return date.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   };
 
   // Skeleton shimmer animation
@@ -427,152 +424,23 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
         </View>
       </ScrollView>
 
-      {/* Log / Rate Modal — same design as TV episode modal */}
-      <Modal
+      {/* Log / Rate Modal */}
+      <WatchedMovieModal
         visible={ratingModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={handleCloseLogModal}
-      >
-        <View style={logStyles.overlay}>
-          <View style={logStyles.container}>
-            {/* Header */}
-            <View style={logStyles.header}>
-              <TouchableOpacity onPress={handleCloseLogModal} style={logStyles.headerBtn}>
-                <Ionicons name="close" size={22} color={COLORS.text.primary} />
-              </TouchableOpacity>
-              <Text style={logStyles.headerTitle}>I Watched</Text>
-              <TouchableOpacity onPress={handleConfirmLog} style={logStyles.headerBtn}>
-                <Ionicons name="checkmark" size={22} color={COLORS.text.primary} />
-              </TouchableOpacity>
-            </View>
+        movie={movie}
+        onClose={() => setRatingModalVisible(false)}
+        onConfirm={handleConfirmLog}
+        initialData={existingEntry ? {
+          rating: existingEntry.rating,
+          liked: existingEntry.liked,
+          review: existingEntry.review,
+          tags: existingEntry.tags?.join(', '),
+          rewatch: existingEntry.rewatch,
+          noSpoilers: existingEntry.noSpoilers,
+          watchedDate: new Date(existingEntry.watchedDate),
+        } : null}
+      />
 
-            <ScrollView style={logStyles.body} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              {/* Movie info */}
-              {movie && (
-                <View style={logStyles.movieInfo}>
-                  {movie.poster_path ? (
-                    <Image
-                      source={{ uri: tmdbService.getImageUrl(movie.poster_path, 'w185') }}
-                      style={logStyles.movieThumb}
-                    />
-                  ) : (
-                    <View style={[logStyles.movieThumb, logStyles.thumbPlaceholder]}>
-                      <Ionicons name="film-outline" size={20} color={COLORS.text.muted} />
-                    </View>
-                  )}
-                  <View style={logStyles.movieText}>
-                    <Text style={logStyles.movieTitle} numberOfLines={2}>{movie.title}</Text>
-                    <Text style={logStyles.movieSub} numberOfLines={1}>
-                      {movie.release_date?.split('-')[0]} · {movie.runtime}m
-                    </Text>
-                  </View>
-                </View>
-              )}
-
-              {/* Date */}
-              <TouchableOpacity style={logStyles.row} onPress={() => setDatePickerVisible(true)} activeOpacity={0.7}>
-                <Text style={logStyles.rowLabel}>Date</Text>
-                <View style={logStyles.dateRight}>
-                  <Ionicons name="calendar-outline" size={16} color={COLORS.text.secondary} />
-                  <Text style={logStyles.dateText}>{formatLogDate(watchedDate)}</Text>
-                  <Ionicons name="chevron-forward" size={16} color={COLORS.text.muted} />
-                </View>
-              </TouchableOpacity>
-              <View style={logStyles.separator} />
-
-              <DatePickerModal
-                visible={datePickerVisible}
-                date={watchedDate}
-                onConfirm={(d) => { setWatchedDate(d); setDatePickerVisible(false); }}
-                onCancel={() => setDatePickerVisible(false)}
-              />
-
-              {/* Star rating + Like */}
-              <View style={logStyles.ratingLikeRow}>
-                <View style={logStyles.starsWrap}>
-                  <SwipeableStars value={rating} onChange={setRating} />
-                  <Text style={logStyles.starsLabel}>{rating > 0 ? 'Rated' : 'Rate'}</Text>
-                </View>
-                <TouchableOpacity
-                  style={logStyles.likeWrap}
-                  onPress={() => setLiked(!liked)}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name={liked ? "heart" : "heart-outline"}
-                    size={36}
-                    color={liked ? COLORS.coral : COLORS.text.muted}
-                  />
-                  <Text style={logStyles.likeLabel}>Like</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={logStyles.separator} />
-
-              {/* Review */}
-              <TextInput
-                style={logStyles.reviewInput}
-                placeholder="Add review..."
-                placeholderTextColor={COLORS.text.muted}
-                value={review}
-                onChangeText={setReview}
-                multiline
-                textAlignVertical="top"
-              />
-              <View style={logStyles.separator} />
-
-              {/* Tags */}
-              <TextInput
-                style={logStyles.tagsInput}
-                placeholder="Add tags..."
-                placeholderTextColor={COLORS.text.muted}
-                value={tags}
-                onChangeText={setTags}
-              />
-              <View style={logStyles.separator} />
-
-              {/* Toggles */}
-              <View style={logStyles.toggleRow}>
-                <TouchableOpacity
-                  style={logStyles.toggleItem}
-                  onPress={() => setRewatch(!rewatch)}
-                  activeOpacity={0.7}
-                >
-                  <View style={logStyles.toggleIconWrap}>
-                    {rewatch && (
-                      <View style={logStyles.toggleCheck}>
-                        <Ionicons name="checkmark-circle" size={16} color={COLORS.teal} />
-                      </View>
-                    )}
-                    <Ionicons name="eye-outline" size={28} color={rewatch ? COLORS.text.primary : COLORS.text.muted} />
-                  </View>
-                  <Text style={[logStyles.toggleLabel, rewatch && logStyles.toggleLabelActive]}>
-                    {"I've seen this\nbefore"}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={logStyles.toggleItem}
-                  onPress={() => setNoSpoilers(!noSpoilers)}
-                  activeOpacity={0.7}
-                >
-                  <View style={logStyles.toggleIconWrap}>
-                    {noSpoilers && (
-                      <View style={logStyles.toggleCheck}>
-                        <Ionicons name="checkmark-circle" size={16} color={COLORS.teal} />
-                      </View>
-                    )}
-                    <Ionicons name="shield-outline" size={28} color={noSpoilers ? COLORS.text.primary : COLORS.text.muted} />
-                  </View>
-                  <Text style={[logStyles.toggleLabel, noSpoilers && logStyles.toggleLabelActive]}>
-                    No spoilers
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
       <Snackbar config={snackbar} onDismiss={() => setSnackbar(null)} />
     </View>
   );
@@ -891,161 +759,5 @@ const skelStyles = StyleSheet.create({
     width: '65%',
     backgroundColor: COLORS.card,
     borderRadius: BORDER_RADIUS.xs,
-  },
-});
-
-// ── Log / Rate Modal styles (matches WatchedEpisodeModal) ──
-const logStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  container: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING.m,
-    paddingVertical: SPACING.s,
-    paddingTop: Platform.OS === 'android' ? 40 : 54,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
-  },
-  headerBtn: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    color: COLORS.text.primary,
-    fontFamily: FONTS.display,
-    fontSize: 20,
-  },
-  body: {
-    flex: 1,
-    paddingHorizontal: SPACING.m,
-  },
-  movieInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.m,
-    paddingVertical: SPACING.m,
-  },
-  movieThumb: {
-    width: 50,
-    height: 75,
-    borderRadius: BORDER_RADIUS.xs,
-    backgroundColor: COLORS.card,
-  },
-  thumbPlaceholder: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  movieText: {
-    flex: 1,
-    gap: 2,
-  },
-  movieTitle: {
-    color: COLORS.text.primary,
-    fontFamily: FONTS.heading,
-    fontSize: 15,
-  },
-  movieSub: {
-    color: COLORS.text.secondary,
-    fontFamily: FONTS.body,
-    fontSize: 13,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: SPACING.m,
-  },
-  rowLabel: {
-    color: COLORS.text.secondary,
-    fontFamily: FONTS.bodyMedium,
-    fontSize: 15,
-  },
-  dateRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  dateText: {
-    color: COLORS.text.primary,
-    fontFamily: FONTS.body,
-    fontSize: 14,
-  },
-  separator: {
-    height: 1,
-    backgroundColor: COLORS.primary,
-    opacity: 0.25,
-  },
-  ratingLikeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: SPACING.l,
-  },
-  starsWrap: {
-    alignItems: 'flex-start',
-    gap: 6,
-  },
-  starsLabel: {
-    color: COLORS.text.secondary,
-    fontFamily: FONTS.body,
-    fontSize: 13,
-  },
-  likeWrap: {
-    alignItems: 'center',
-    gap: 6,
-  },
-  likeLabel: {
-    color: COLORS.text.secondary,
-    fontFamily: FONTS.body,
-    fontSize: 13,
-  },
-  reviewInput: {
-    color: COLORS.text.primary,
-    fontFamily: FONTS.body,
-    fontSize: 15,
-    paddingVertical: SPACING.m,
-    minHeight: 100,
-  },
-  tagsInput: {
-    color: COLORS.text.primary,
-    fontFamily: FONTS.body,
-    fontSize: 15,
-    paddingVertical: SPACING.m,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: SPACING.xl,
-  },
-  toggleItem: {
-    alignItems: 'center',
-    gap: 8,
-  },
-  toggleIconWrap: {
-    position: 'relative',
-  },
-  toggleCheck: {
-    position: 'absolute',
-    top: -6,
-    left: -6,
-    zIndex: 1,
-  },
-  toggleLabel: {
-    color: COLORS.text.muted,
-    fontFamily: FONTS.body,
-    fontSize: 12,
-    textAlign: 'center',
-  },
-  toggleLabelActive: {
-    color: COLORS.text.secondary,
   },
 });

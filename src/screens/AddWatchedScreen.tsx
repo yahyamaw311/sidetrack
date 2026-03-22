@@ -94,9 +94,9 @@ export const AddWatchedScreen: React.FC<AddWatchedScreenProps> = ({ onClose }) =
   const handleConfirmWatched = async () => {
     if (!selectedMovie) return;
 
-    if (isEditMode) {
+    if (isEditMode && existingEntry) {
       // Only update the rating
-      await StorageProvider.updateWatchedMovieRating(selectedMovie.id, selectedRating);
+      await StorageProvider.updateWatchedMovieRating(selectedMovie.id, selectedRating, existingEntry.watchedDate);
     } else {
       const watchedMovie: WatchedMovie = {
         movieId: selectedMovie.id,

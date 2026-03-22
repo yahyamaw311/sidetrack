@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Image, TextInput,
   TouchableOpacity, ActivityIndicator,
-  Platform, ScrollView, Animated, RefreshControl
+  Platform, ScrollView, Animated, RefreshControl, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,23 +17,7 @@ const POSTER_WIDTH = (LAYOUT.window.width - SPACING.m * 2 - SPACING.s * 2) / 3;
 
 import { getRatingColor } from '../constants/theme';
 
-// --- Skeleton Components ---
-const SkeletonBox = ({ style }: { style: any }) => {
-  const opacity = useRef(new Animated.Value(0.3)).current;
-
-  useEffect(() => {
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(opacity, { toValue: 0.7, duration: 800, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 0.3, duration: 800, useNativeDriver: true }),
-      ])
-    );
-    pulse.start();
-    return () => pulse.stop();
-  }, [opacity]);
-
-  return <Animated.View style={[{ backgroundColor: COLORS.card, opacity }, style]} />;
-};
+import { SkeletonBox } from '../components/SkeletonBox';
 
 const SpotlightSkeleton = () => (
   <View style={skeletonStyles.spotlightRow}>
@@ -110,15 +94,15 @@ const PopcornLoader = () => {
   return (
     <View style={popcornStyles.container}>
       <View style={popcornStyles.kernelRow}>
-        <Animated.Text style={[popcornStyles.kernel, { transform: [{ translateY: bounce1 }] }]}>
-          🍿
-        </Animated.Text>
-        <Animated.Text style={[popcornStyles.kernel, { transform: [{ translateY: bounce2 }] }]}>
-          🎬
-        </Animated.Text>
-        <Animated.Text style={[popcornStyles.kernel, { transform: [{ translateY: bounce3 }] }]}>
-          🍿
-        </Animated.Text>
+        <Animated.View style={[popcornStyles.kernel, { transform: [{ translateY: bounce1 }] }]}>
+          <Ionicons name="film-outline" size={28} color={COLORS.primary} />
+        </Animated.View>
+        <Animated.View style={[popcornStyles.kernel, { transform: [{ translateY: bounce2 }] }]}>
+          <Ionicons name="videocam-outline" size={28} color={COLORS.accent} />
+        </Animated.View>
+        <Animated.View style={[popcornStyles.kernel, { transform: [{ translateY: bounce3 }] }]}>
+          <Ionicons name="film-outline" size={28} color={COLORS.teal} />
+        </Animated.View>
       </View>
       <Animated.View style={{ transform: [{ rotate: rotation }] }}>
         <Ionicons name="film-outline" size={20} color={COLORS.primary} />
@@ -158,11 +142,16 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
   const [results, setResults] = useState<SearchResult[]>([]);
   const [trending, setTrending] = useState<SearchResult[]>([]);
   const [trendingMovies, setTrendingMovies] = useState<SearchResult[]>([]);
+  const [topRated, setTopRated] = useState<SearchResult[]>([]);
   const [currentlyWatching, setCurrentlyWatching] = useState<CurrentlyWatchingItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [searchActive, setSearchActive] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [searchHistory, setSearchHistory] = useState<SearchResult[]>([]);
+  const [selectedGenre, setSelectedGenre] = useState<number | null>(null);
+  const [genreResults, setGenreResults] = useState<SearchResult[]>([]);
+  const [genreLoading, setGenreLoading] = useState(false);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -199,27 +188,26 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
     return () => { refreshRef?.(null); };
   }, []);
 
-  const loadTrending = async () => {
+  const loadTrending = async (bustCache = false) => {
+    if (bustCache) {
+      tmdbService.clearCache();
+    }
     setLoading(true);
-    const [tvData, movieData] = await Promise.all([
+    const [tvData, movieData, topRatedData] = await Promise.all([
       tmdbService.getTrending(),
       tmdbService.getTrendingMovies(),
+      tmdbService.getTopRatedMovies(),
     ]);
     setTrending(tvData);
     setTrendingMovies(movieData);
+    setTopRated(topRatedData);
     setCurrentlyWatching(await StorageProvider.getCurrentlyWatching());
     setLoading(false);
   };
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    const [tvData, movieData] = await Promise.all([
-      tmdbService.getTrending(),
-      tmdbService.getTrendingMovies(),
-    ]);
-    setTrending(tvData);
-    setTrendingMovies(movieData);
-    setCurrentlyWatching(await StorageProvider.getCurrentlyWatching());
+    await loadTrending(true);
     setRefreshing(false);
   };
 
@@ -228,7 +216,8 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
       setLoading(true);
       const searchResults = await tmdbService.search(text);
       // Filter out 'person' results — only show movies and TV shows
-      setResults(searchResults.filter((item: any) => item.media_type === 'movie' || item.media_type === 'tv'));
+      const filtered = searchResults.filter((item: any) => item.media_type === 'movie' || item.media_type === 'tv');
+      setResults(filtered);
       setLoading(false);
       setSearching(false);
     } else if (text.length === 0) {
@@ -258,8 +247,56 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
     setSearchActive(false);
   };
 
+  // Load search history when search becomes active
+  useEffect(() => {
+    if (searchActive) {
+      StorageProvider.getSearchHistory().then(setSearchHistory);
+    }
+  }, [searchActive]);
+
+  const handleSelectFromSearch = useCallback(async (item: SearchResult) => {
+    await StorageProvider.addSearchHistoryItem(item);
+    onSelectShow(item);
+  }, [onSelectShow]);
+
+  const removeHistoryItem = useCallback(async (item: SearchResult) => {
+    await StorageProvider.removeSearchHistoryItem(item.id, item.media_type);
+    setSearchHistory(await StorageProvider.getSearchHistory());
+  }, []);
+
+  const clearAllHistory = useCallback(async () => {
+    await StorageProvider.clearSearchHistory();
+    setSearchHistory([]);
+  }, []);
+
   const spotlight = trending.slice(0, 8);
   const popular = trending.slice(8);
+
+  // ── Genre chips ──
+  const GENRES = [
+    { id: 28, name: 'Action', icon: 'flash-outline' },
+    { id: 35, name: 'Comedy', icon: 'happy-outline' },
+    { id: 18, name: 'Drama', icon: 'mask-outline' },
+    { id: 27, name: 'Horror', icon: 'skull-outline' },
+    { id: 878, name: 'Sci-Fi', icon: 'rocket-outline' },
+    { id: 10749, name: 'Romance', icon: 'heart-half-outline' },
+    { id: 53, name: 'Thriller', icon: 'alert-circle-outline' },
+    { id: 16, name: 'Animation', icon: 'color-palette-outline' },
+    { id: 99, name: 'Documentary', icon: 'videocam-outline' },
+  ];
+
+  const handleGenreSelect = async (genreId: number) => {
+    if (selectedGenre === genreId) {
+      setSelectedGenre(null);
+      setGenreResults([]);
+      return;
+    }
+    setSelectedGenre(genreId);
+    setGenreLoading(true);
+    const data = await tmdbService.discoverByGenre(genreId);
+    setGenreResults(data);
+    setGenreLoading(false);
+  };
 
   const renderSpotlightItem = ({ item }: { item: SearchResult }) => (
     <TouchableOpacity
@@ -308,7 +345,7 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
 
   const renderSearchResult = ({ item }: { item: SearchResult }) => (
     <TouchableOpacity
-      onPress={() => onSelectShow(item)}
+      onPress={() => handleSelectFromSearch(item)}
       activeOpacity={0.7}
       style={styles.searchResultCard}
     >
@@ -371,7 +408,7 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
             <Ionicons name="search" size={18} color={COLORS.text.muted} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Movies, shows, people..."
+              placeholder="Movies, shows..."
               placeholderTextColor={COLORS.text.muted}
               value={query}
               onChangeText={handleSearch}
@@ -385,14 +422,56 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
           </View>
         )}
 
-        {/* Search Results */}
-        {searchActive && query.length > 2 ? (
+        {/* Recent Searches — shows/movies the user previously tapped */}
+        {searchActive && query.length <= 2 && searchHistory.length > 0 ? (
+          <View style={styles.recentSearches}>
+            <View style={styles.recentHeader}>
+              <Text style={styles.recentTitle}>Recent</Text>
+              <TouchableOpacity onPress={clearAllHistory} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.recentClear}>Clear All</Text>
+              </TouchableOpacity>
+            </View>
+            {searchHistory.map((item, index) => (
+              <TouchableOpacity
+                key={`${item.media_type || 'unknown'}_${item.id || index}`}
+                style={styles.recentRow}
+                onPress={() => onSelectShow(item)}
+                activeOpacity={0.7}
+              >
+                {item.poster_path ? (
+                  <Image
+                    source={{ uri: tmdbService.getImageUrl(item.poster_path, 'w92') }}
+                    style={styles.recentPoster}
+                  />
+                ) : (
+                  <View style={[styles.recentPoster, styles.recentPosterPlaceholder]}>
+                    <Ionicons name="film-outline" size={14} color={COLORS.text.muted} />
+                  </View>
+                )}
+                <View style={styles.recentInfo}>
+                  <Text style={styles.recentItemTitle} numberOfLines={1}>{item.name || item.title}</Text>
+                  <Text style={styles.recentItemMeta}>
+                    {(item.release_date || item.first_air_date)?.split('-')[0] || ''} · {item.media_type === 'movie' ? 'Movie' : 'Series'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => removeHistoryItem(item)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  style={{ padding: 4 }}
+                >
+                  <Ionicons name="close" size={14} color={COLORS.text.muted} />
+                </TouchableOpacity>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : searchActive && query.length > 2 ? (
           <FlatList
             data={results}
             renderItem={renderSearchResult}
-            keyExtractor={item => item.id.toString()}
+            keyExtractor={item => `${item.media_type}_${item.id}`}
             contentContainerStyle={styles.searchList}
             showsVerticalScrollIndicator={false}
+            keyboardDismissMode="on-drag"
             ListEmptyComponent={
               loading || searching ? (
                 <PopcornLoader />
@@ -408,6 +487,7 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
           /* Browse Sections */
           <ScrollView
             showsVerticalScrollIndicator={false}
+            keyboardDismissMode="on-drag"
             contentContainerStyle={styles.scrollContent}
             refreshControl={
               <RefreshControl
@@ -474,6 +554,23 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
                     <TouchableOpacity
                       key={`cw-${item.seriesId}`}
                       onPress={() => onSelectShow({ id: item.seriesId, media_type: 'tv', name: item.name, poster_path: item.posterPath } as SearchResult)}
+                      onLongPress={() => {
+                        Alert.alert(
+                          "Remove Show",
+                          `Remove "${item.name}" from Currently Watching?`,
+                          [
+                            { text: "Cancel", style: "cancel" },
+                            {
+                              text: "Remove",
+                              style: "destructive",
+                              onPress: async () => {
+                                await StorageProvider.removeFromCurrentlyWatching(item.seriesId);
+                                setCurrentlyWatching(await StorageProvider.getCurrentlyWatching());
+                              }
+                            }
+                          ]
+                        );
+                      }}
                       activeOpacity={0.8}
                       style={styles.posterCard}
                     >
@@ -544,6 +641,84 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
                 ))}
               </ScrollView>
             </View>
+
+            {/* Genre Chips */}
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <View style={[styles.sectionDot, { backgroundColor: COLORS.accent }]} />
+                <Text style={styles.sectionTitle}>Browse by Genre</Text>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.genreChipList}>
+                {GENRES.map(g => (
+                  <TouchableOpacity
+                    key={`genre-${g.id}`}
+                    style={[styles.genreChip, selectedGenre === g.id && styles.genreChipActive]}
+                    onPress={() => handleGenreSelect(g.id)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name={g.icon as any} size={14} color={selectedGenre === g.id ? COLORS.primary : COLORS.text.secondary} />
+                    <Text style={[styles.genreChipText, selectedGenre === g.id && styles.genreChipTextActive]}>{g.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              {/* Genre results */}
+              {selectedGenre && (
+                genreLoading ? (
+                  <View style={{ paddingVertical: SPACING.l, alignItems: 'center' }}>
+                    <ActivityIndicator color={COLORS.primary} />
+                  </View>
+                ) : genreResults.length > 0 ? (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.posterList, { marginTop: SPACING.m }]}>
+                    {genreResults.slice(0, 12).map(item => (
+                      <TouchableOpacity
+                        key={`genre-r-${item.id}`}
+                        onPress={() => onSelectShow(item)}
+                        activeOpacity={0.8}
+                        style={styles.posterCard}
+                      >
+                        <Image
+                          source={{ uri: tmdbService.getImageUrl(item.poster_path) }}
+                          style={styles.posterImage}
+                          resizeMode="cover"
+                        />
+                        <Text style={styles.posterTitle} numberOfLines={2}>
+                          {item.name || item.title}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                ) : null
+              )}
+            </View>
+
+            {/* Top Rated */}
+            {topRated.length > 0 && (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <View style={[styles.sectionDot, { backgroundColor: COLORS.teal }]} />
+                  <Text style={styles.sectionTitle}>Top Rated</Text>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.posterList}>
+                  {topRated.slice(0, 12).map(item => (
+                    <TouchableOpacity
+                      key={`top-${item.id}`}
+                      onPress={() => onSelectShow(item)}
+                      activeOpacity={0.8}
+                      style={styles.posterCard}
+                    >
+                      <Image
+                        source={{ uri: tmdbService.getImageUrl(item.poster_path) }}
+                        style={styles.posterImage}
+                        resizeMode="cover"
+                      />
+                      <Text style={styles.posterTitle} numberOfLines={2}>
+                        {item.name || item.title}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
           </ScrollView>
         )}
       </SafeAreaView>
@@ -611,6 +786,62 @@ const styles = StyleSheet.create({
     padding: 4,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  recentSearches: {
+    flex: 1,
+    paddingHorizontal: SPACING.m,
+    paddingTop: SPACING.s,
+  },
+  recentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.s,
+  },
+  recentTitle: {
+    fontFamily: FONTS.bodySemiBold,
+    fontSize: 13,
+    color: COLORS.text.secondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  recentClear: {
+    fontFamily: FONTS.body,
+    fontSize: 13,
+    color: COLORS.primary,
+  },
+  recentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.s,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.borderLight,
+  },
+  recentPoster: {
+    width: 36,
+    height: 54,
+    borderRadius: 4,
+    marginRight: SPACING.s,
+    backgroundColor: COLORS.surface,
+  },
+  recentPosterPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recentInfo: {
+    flex: 1,
+    marginRight: SPACING.s,
+  },
+  recentItemTitle: {
+    fontFamily: FONTS.body,
+    fontSize: 14,
+    color: COLORS.text.primary,
+  },
+  recentItemMeta: {
+    fontFamily: FONTS.body,
+    fontSize: 12,
+    color: COLORS.text.muted,
+    marginTop: 2,
   },
   searchList: {
     paddingHorizontal: SPACING.m,
@@ -755,6 +986,37 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.bodyMedium,
     fontSize: 12,
   },
+  genreChipList: {
+    paddingLeft: SPACING.m,
+    gap: SPACING.s,
+    paddingRight: SPACING.m,
+  },
+  genreChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: SPACING.m,
+    paddingVertical: SPACING.s,
+    borderRadius: BORDER_RADIUS.round,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+  },
+  genreChipActive: {
+    backgroundColor: COLORS.primaryMuted,
+    borderColor: COLORS.primary,
+  },
+  genreChipEmoji: {
+    fontSize: 14,
+  },
+  genreChipText: {
+    fontFamily: FONTS.bodyMedium,
+    fontSize: 13,
+    color: COLORS.text.secondary,
+  },
+  genreChipTextActive: {
+    color: COLORS.primary,
+  },
 });
 
 const skeletonStyles = StyleSheet.create({
@@ -857,7 +1119,7 @@ const popcornStyles = StyleSheet.create({
     marginBottom: SPACING.s,
   },
   kernel: {
-    fontSize: 32,
+    padding: SPACING.xs,
   },
   text: {
     color: COLORS.text.secondary,

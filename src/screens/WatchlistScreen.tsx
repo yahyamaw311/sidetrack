@@ -1,21 +1,46 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, Platform, Alert, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, Platform, Alert, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../constants/theme';
 import { tmdbService } from '../services/tmdbService';
 import { StorageProvider } from '../services/StorageProvider';
 import { SwipeableRow } from '../components/SwipeableRow';
+import { SkeletonBox } from '../components/SkeletonBox';
 import { QueuedItem } from '../types';
+
+const WatchlistSkeleton = () => (
+  <View style={{ flex: 1, paddingHorizontal: SPACING.m, paddingTop: SPACING.s }}>
+    {[0, 1, 2, 3, 4, 5].map(i => (
+      <View key={i} style={styles.card}>
+        <SkeletonBox style={styles.poster} />
+        <View style={styles.cardContent}>
+          <View style={styles.cardTop}>
+            <SkeletonBox style={{ width: 50, height: 20, borderRadius: BORDER_RADIUS.xs }} />
+          </View>
+          <View style={styles.cardBottom}>
+            <SkeletonBox style={{ width: '80%', height: 16, borderRadius: BORDER_RADIUS.xs, marginBottom: 8 }} />
+            <SkeletonBox style={{ width: '40%', height: 12, borderRadius: BORDER_RADIUS.xs }} />
+          </View>
+        </View>
+      </View>
+    ))}
+  </View>
+);
 
 interface WatchlistScreenProps {
   onSelectShow: (id: number, type: 'tv' | 'movie') => void;
   refreshRef?: (fn: (() => void) | null) => void;
+  onNavigateToExplore?: () => void;
 }
 
-export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, refreshRef }) => {
+type WatchlistFilter = 'all' | 'tv' | 'movie';
+
+export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, refreshRef, onNavigateToExplore }) => {
   const [items, setItems] = useState<QueuedItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<WatchlistFilter>('all');
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
 
   const loadWatchlist = useCallback(async () => {
     setLoading(true);
@@ -44,8 +69,19 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
   }, []);  // Run once — stable callback via ref
 
   const handleRemove = async (seriesId: number) => {
-    await StorageProvider.removeFromWatchlist(seriesId);
-    await loadWatchlist();
+    setDeletingIds(prev => new Set(prev).add(seriesId));
+    try {
+      await StorageProvider.removeFromWatchlist(seriesId);
+      // Wait a fraction of a second to show the spinner before disappearing
+      await new Promise(resolve => setTimeout(resolve, 300));
+      setItems(prev => prev.filter(i => i.seriesId !== seriesId));
+    } finally {
+      setDeletingIds(prev => {
+        const next = new Set(prev);
+        next.delete(seriesId);
+        return next;
+      });
+    }
   };
 
   const formatDate = (isoDate: string) => {
@@ -53,37 +89,48 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  const renderItem = ({ item }: { item: QueuedItem }) => (
-    <SwipeableRow onDelete={() => handleRemove(item.seriesId)}>
-      <TouchableOpacity
-        onPress={() => onSelectShow(item.seriesId, item.itemType || 'tv')}
-        style={styles.card}
-        activeOpacity={0.7}
-      >
-        <Image
-          source={{ uri: tmdbService.getImageUrl(item.posterPath) }}
-          style={styles.poster}
-          resizeMode="cover"
-        />
-        <View style={styles.cardContent}>
-          <View style={styles.cardTop}>
-            <View style={styles.typeBadge}>
-              <Text style={styles.typeBadgeText}>
-                {(item.itemType || 'tv') === 'movie' ? 'MOVIE' : 'SERIES'}
-              </Text>
+  const renderItem = ({ item }: { item: QueuedItem }) => {
+    const isDeleting = deletingIds.has(item.seriesId);
+    return (
+      <SwipeableRow onDelete={() => handleRemove(item.seriesId)}>
+        <View>
+          <TouchableOpacity
+            onPress={() => onSelectShow(item.seriesId, item.itemType || 'tv')}
+            style={[styles.card, isDeleting && { opacity: 0.6 }]}
+            activeOpacity={0.7}
+            disabled={isDeleting}
+          >
+            <Image
+              source={{ uri: tmdbService.getImageUrl(item.posterPath) }}
+              style={styles.poster}
+              resizeMode="cover"
+            />
+            <View style={styles.cardContent}>
+              <View style={styles.cardTop}>
+                <View style={styles.typeBadge}>
+                  <Text style={styles.typeBadgeText}>
+                    {(item.itemType || 'tv') === 'movie' ? 'MOVIE' : 'SERIES'}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.cardBottom}>
+                <Text style={styles.title} numberOfLines={2}>{item.name}</Text>
+                <View style={styles.dateLine}>
+                  <Ionicons name="time-outline" size={12} color={COLORS.text.muted} />
+                  <Text style={styles.dateText}>Added {formatDate(item.addedDate)}</Text>
+                </View>
+              </View>
             </View>
-          </View>
-          <View style={styles.cardBottom}>
-            <Text style={styles.title} numberOfLines={2}>{item.name}</Text>
-            <View style={styles.dateLine}>
-              <Ionicons name="time-outline" size={12} color={COLORS.text.muted} />
-              <Text style={styles.dateText}>Added {formatDate(item.addedDate)}</Text>
+          </TouchableOpacity>
+          {isDeleting && (
+            <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(10, 10, 20, 0.4)', borderRadius: BORDER_RADIUS.m }]}>
+              <ActivityIndicator color={COLORS.primary} size="large" />
             </View>
-          </View>
+          )}
         </View>
-      </TouchableOpacity>
-    </SwipeableRow>
-  );
+      </SwipeableRow>
+    );
+  };
 
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
@@ -94,26 +141,54 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
       <Text style={styles.emptySubtitle}>
         Add movies and shows you want to watch next
       </Text>
+      {onNavigateToExplore && (
+        <TouchableOpacity style={styles.ctaButton} onPress={onNavigateToExplore} activeOpacity={0.8}>
+          <Ionicons name="compass-outline" size={18} color={COLORS.background} />
+          <Text style={styles.ctaText}>Browse Explore</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
+
+  const filteredItems = filter === 'all' ? items : items.filter(i => (i.itemType || 'tv') === filter);
 
   return (
     <View style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Watchlist</Text>
-          {items.length > 0 && (
+          {filteredItems.length > 0 && (
             <View style={styles.countBadge}>
-              <Text style={styles.countText}>{items.length}</Text>
+              <Text style={styles.countText}>{filteredItems.length}</Text>
             </View>
           )}
         </View>
 
-        {items.length === 0 ? (
+        {/* Filter Tabs */}
+        {items.length > 0 && (
+          <View style={styles.filterRow}>
+            {(['all', 'tv', 'movie'] as WatchlistFilter[]).map(f => (
+              <TouchableOpacity
+                key={f}
+                style={[styles.filterTab, filter === f && styles.filterTabActive]}
+                onPress={() => setFilter(f)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.filterTabText, filter === f && styles.filterTabTextActive]}>
+                  {f === 'all' ? 'All' : f === 'tv' ? 'Shows' : 'Movies'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {loading && items.length === 0 ? (
+          <WatchlistSkeleton />
+        ) : filteredItems.length === 0 && !loading ? (
           renderEmpty()
         ) : (
           <FlatList
-            data={items}
+            data={filteredItems}
             renderItem={renderItem}
             keyExtractor={(item) => item.seriesId.toString()}
             contentContainerStyle={styles.list}
@@ -165,6 +240,32 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontFamily: FONTS.mono,
     fontSize: 13,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    paddingHorizontal: SPACING.m,
+    marginBottom: SPACING.s,
+    gap: SPACING.s,
+  },
+  filterTab: {
+    paddingHorizontal: SPACING.m,
+    paddingVertical: SPACING.xs + 2,
+    borderRadius: BORDER_RADIUS.round,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+  },
+  filterTabActive: {
+    backgroundColor: COLORS.primaryMuted,
+    borderColor: COLORS.primary,
+  },
+  filterTabText: {
+    fontFamily: FONTS.bodyMedium,
+    fontSize: 13,
+    color: COLORS.text.muted,
+  },
+  filterTabTextActive: {
+    color: COLORS.primary,
   },
   list: {
     paddingHorizontal: SPACING.m,
@@ -262,5 +363,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  ctaButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.l,
+    paddingVertical: SPACING.s,
+    borderRadius: BORDER_RADIUS.round,
+    marginTop: SPACING.s,
+  },
+  ctaText: {
+    color: COLORS.background,
+    fontFamily: FONTS.heading,
+    fontSize: 15,
   },
 });

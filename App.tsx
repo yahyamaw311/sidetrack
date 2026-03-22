@@ -16,6 +16,8 @@ import {
 import { MainNavigation } from './src/navigation/MainNavigation';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { NetworkBanner } from './src/components/NetworkBanner';
+import { NetworkProvider } from './src/contexts/NetworkContext';
+import { ErrorNotifierProvider } from './src/contexts/ErrorNotifier';
 import { COLORS } from './src/constants/theme';
 
 // Keep the splash screen visible while we fetch resources
@@ -43,13 +45,17 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <ErrorBoundary>
-        <View style={styles.container} onLayout={onLayoutRootView}>
-          <StatusBar barStyle="light-content" backgroundColor={COLORS.background} translucent={false} />
-          <NetworkBanner />
-          <MainNavigation />
-        </View>
-      </ErrorBoundary>
+      <NetworkProvider>
+        <ErrorNotifierProvider>
+          <ErrorBoundary>
+            <View style={styles.container} onLayout={onLayoutRootView}>
+              <StatusBar barStyle="light-content" backgroundColor={COLORS.background} translucent={false} />
+              <NetworkBanner />
+              <MainNavigation />
+            </View>
+          </ErrorBoundary>
+        </ErrorNotifierProvider>
+      </NetworkProvider>
     </SafeAreaProvider>
   );
 }
