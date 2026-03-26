@@ -1,4 +1,4 @@
-import { Dimensions } from 'react-native';
+import {  } from 'react-native';
 
 export const COLORS = {
   background: '#07070B',
@@ -53,8 +53,7 @@ export const SPACING = {
 };
 
 export const LAYOUT = {
-  get window() { return Dimensions.get('window'); },
-  get isSmallDevice() { return Dimensions.get('window').width < 375; },
+  // Use useWindowDimensions() instead to handle split-screen/rotation
 };
 
 export const SHADOWS = {

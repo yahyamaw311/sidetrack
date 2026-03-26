@@ -1,24 +1,24 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TextInput, 
-  FlatList, 
-  Image, 
-  TouchableOpacity, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  FlatList,
+  TouchableOpacity,
   SafeAreaView,
   Modal,
   ActivityIndicator,
   InteractionManager,
-  Platform 
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, getRatingColor } from '../constants/theme';
 import { tmdbService } from '../services/tmdbService';
 import { StorageProvider } from '../services/StorageProvider';
+import { CONFIG } from '../constants/config';
 import { SearchResult, WatchedMovie, MovieDetail } from '../types';
 import { DatePickerModal } from '../components/DatePicker';
+import { FadeImage } from '../components/FadeImage';
 
 interface AddWatchedScreenProps {
   onClose: () => void;
@@ -123,13 +123,13 @@ export const AddWatchedScreen: React.FC<AddWatchedScreenProps> = ({ onClose }) =
   };
 
   const renderItem = ({ item }: { item: SearchResult }) => (
-    <TouchableOpacity 
+    <TouchableOpacity
       style={styles.resultCard}
       onPress={() => handleSelectMovie(item)}
       activeOpacity={0.7}
     >
-      <Image 
-        source={{ uri: tmdbService.getImageUrl(item.poster_path) }}
+      <FadeImage
+        source={tmdbService.getImageSource(item.poster_path, 'w92')}
         style={styles.poster}
       />
       <View style={styles.resultInfo}>
@@ -214,7 +214,7 @@ export const AddWatchedScreen: React.FC<AddWatchedScreenProps> = ({ onClose }) =
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHandle} />
-            
+
             <Text style={styles.modalTitle}>{isEditMode ? 'Update Rating' : 'Rate'}</Text>
             {selectedMovie && (
               <Text style={styles.modalSubtitle}>{selectedMovie.title}</Text>
@@ -249,7 +249,7 @@ export const AddWatchedScreen: React.FC<AddWatchedScreenProps> = ({ onClose }) =
             <Text style={[styles.ratingDisplay, { color: getRatingColor(selectedRating) }]}>
               {selectedRating}
             </Text>
-            
+
             {/* Rating selector */}
             <View style={styles.ratingSelector}>
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => (
@@ -257,7 +257,7 @@ export const AddWatchedScreen: React.FC<AddWatchedScreenProps> = ({ onClose }) =
                   key={num}
                   style={[
                     styles.ratingOption,
-                    selectedRating === num && { 
+                    selectedRating === num && {
                       backgroundColor: getRatingColor(num),
                       borderColor: getRatingColor(num),
                     }
@@ -273,13 +273,13 @@ export const AddWatchedScreen: React.FC<AddWatchedScreenProps> = ({ onClose }) =
             </View>
 
             <View style={styles.modalActions}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.cancelButton}
                 onPress={() => setRatingModalVisible(false)}
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.confirmButton}
                 onPress={handleConfirmWatched}
               >
@@ -311,7 +311,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.m,
     paddingVertical: SPACING.s,
-    paddingTop: Platform.OS === 'android' ? SPACING.xl : SPACING.s,
+    paddingTop: CONFIG.LAYOUT.SAFE_AREA_PADDING_TOP || SPACING.s,
   },
   closeButton: {
     width: 40,

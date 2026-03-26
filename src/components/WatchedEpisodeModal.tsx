@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, TextInput, Modal, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
 import { tmdbService } from '../services/tmdbService';
 import { Episode, TVShowDetail } from '../types';
 import { SwipeableStars } from './SwipeableStars';
 import { DatePickerModal } from './DatePicker';
+import { FadeImage } from './FadeImage';
 
 interface InitialData {
     rating?: number;
@@ -60,7 +61,8 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
             setTags(initialData.tags ?? '');
             setRewatch(initialData.rewatch ?? false);
             setNoSpoilers(initialData.noSpoilers ?? false);
-            setWatchedDate(initialData.watchedDate ?? new Date());
+            const d = initialData.watchedDate ?? new Date();
+            setWatchedDate(d > new Date() ? new Date() : d);
         } else if (visible) {
             setRating(0);
             setLiked(false);
@@ -73,7 +75,10 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
     }, [visible]);
 
     const handleConfirm = () => {
-        onConfirm({ rating, liked, review, tags, rewatch, noSpoilers, watchedDate });
+        if (rating === 0) return;
+        const cleanTags = Array.from(new Set(tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean))).join(', ');
+        const clampedDate = watchedDate > new Date() ? new Date() : watchedDate;
+        onConfirm({ rating, liked, review: review.trim(), tags: cleanTags, rewatch, noSpoilers, watchedDate: clampedDate });
         // Reset state
         setRating(0);
         setLiked(false);
@@ -114,8 +119,12 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
                             <Ionicons name="close" size={22} color={COLORS.text.primary} />
                         </TouchableOpacity>
                         <Text style={styles.headerTitle}>{initialData ? 'Edit Entry' : 'I Watched'}</Text>
-                        <TouchableOpacity onPress={handleConfirm} style={styles.headerBtn}>
-                            <Ionicons name="checkmark" size={22} color={COLORS.text.primary} />
+                        <TouchableOpacity
+                            onPress={handleConfirm}
+                            style={styles.headerBtn}
+                            disabled={rating === 0}
+                        >
+                            <Ionicons name="checkmark" size={22} color={rating === 0 ? COLORS.text.muted : COLORS.text.primary} />
                         </TouchableOpacity>
                     </View>
 
@@ -124,8 +133,8 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
                         {episode && (
                             <View style={styles.episodeInfo}>
                                 {episode.still_path ? (
-                                    <Image
-                                        source={{ uri: tmdbService.getImageUrl(episode.still_path, 'w300') }}
+                                    <FadeImage
+                                        source={tmdbService.getImageSource(episode.still_path, 'w300')}
                                         style={styles.episodeThumb}
                                     />
                                 ) : (
@@ -190,6 +199,7 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
                             onChangeText={setReview}
                             multiline
                             textAlignVertical="top"
+                            maxLength={2000}
                         />
                         <View style={styles.separator} />
 
@@ -200,6 +210,7 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
                             placeholderTextColor={COLORS.text.muted}
                             value={tags}
                             onChangeText={setTags}
+                            maxLength={100}
                         />
                         <View style={styles.separator} />
 

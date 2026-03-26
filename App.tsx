@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import { View, StyleSheet, StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
@@ -18,6 +18,8 @@ import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { NetworkBanner } from './src/components/NetworkBanner';
 import { NetworkProvider } from './src/contexts/NetworkContext';
 import { ErrorNotifierProvider } from './src/contexts/ErrorNotifier';
+import { OnboardingOverlay } from './src/components/OnboardingOverlay';
+import { StorageProvider } from './src/services/StorageProvider';
 import { COLORS } from './src/constants/theme';
 
 // Keep the splash screen visible while we fetch resources
@@ -32,6 +34,18 @@ export default function App() {
     Inter_500Medium,
     Inter_600SemiBold,
   });
+
+  const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    // Check onboarding and trigger storage optimization
+    Promise.all([
+      StorageProvider.hasCompletedOnboarding(),
+      StorageProvider.migrateToPartitionedStorage(),
+    ]).then(([completed]) => {
+      setShowOnboarding(!completed);
+    });
+  }, []);
 
   const onLayoutRootView = useCallback(async () => {
     if (fontsLoaded) {
@@ -52,6 +66,9 @@ export default function App() {
               <StatusBar barStyle="light-content" backgroundColor={COLORS.background} translucent={false} />
               <NetworkBanner />
               <MainNavigation />
+              {showOnboarding && (
+                <OnboardingOverlay onComplete={() => setShowOnboarding(false)} />
+              )}
             </View>
           </ErrorBoundary>
         </ErrorNotifierProvider>

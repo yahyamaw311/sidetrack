@@ -17,9 +17,7 @@
     "extra": {
       "eas": {
         "projectId": "7833787b-ab96-4d8d-a1e1-2bb607061d9a"
-      },
-      "tmdbApiKey": "602bfe1cf36c39a33dd747b1cd8495d4",
-      "omdbApiKey": "986d085"
+      }
     },
     "android": {
       "package": "com.yahyamaw311.sidetrack",

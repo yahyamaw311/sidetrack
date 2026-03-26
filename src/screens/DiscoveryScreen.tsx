@@ -1,135 +1,30 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useCallback, useRef } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, Image, TextInput,
+  View, Text, FlatList, Image, TextInput,
   TouchableOpacity, ActivityIndicator,
-  Platform, ScrollView, Animated, RefreshControl, Alert
+  ScrollView, RefreshControl, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
+import { useDataEvent } from '../hooks/useDataEvent';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, FONTS, SPACING, LAYOUT, BORDER_RADIUS } from '../constants/theme';
+import { COLORS, SPACING } from '../constants/theme';
+import { CONFIG } from '../constants/config';
 import { tmdbService } from '../services/tmdbService';
 import { StorageProvider } from '../services/StorageProvider';
+import { FadeImage } from '../components/FadeImage';
 import { SearchResult, CurrentlyWatchingItem } from '../types';
-
-const SPOTLIGHT_WIDTH = LAYOUT.window.width * 0.75;
-const POSTER_WIDTH = (LAYOUT.window.width - SPACING.m * 2 - SPACING.s * 2) / 3;
-
 import { getRatingColor } from '../constants/theme';
 
-import { SkeletonBox } from '../components/SkeletonBox';
-
-const SpotlightSkeleton = () => (
-  <View style={skeletonStyles.spotlightRow}>
-    {[0, 1].map(i => (
-      <View key={i} style={skeletonStyles.spotlightCard}>
-        <SkeletonBox style={skeletonStyles.spotlightImage} />
-        <View style={skeletonStyles.spotlightTextArea}>
-          <SkeletonBox style={skeletonStyles.titleBar} />
-          <SkeletonBox style={skeletonStyles.ratingBar} />
-        </View>
-      </View>
-    ))}
-  </View>
-);
-
-const PosterSkeleton = () => (
-  <View style={skeletonStyles.posterRow}>
-    {[0, 1, 2].map(i => (
-      <View key={i} style={skeletonStyles.posterCard}>
-        <SkeletonBox style={skeletonStyles.posterImage} />
-        <SkeletonBox style={skeletonStyles.posterTitleBar} />
-      </View>
-    ))}
-  </View>
-);
-
-const SearchResultSkeleton = () => (
-  <View>
-    {[0, 1, 2, 3, 4].map(i => (
-      <View key={i} style={skeletonStyles.searchRow}>
-        <SkeletonBox style={skeletonStyles.searchPoster} />
-        <View style={skeletonStyles.searchTextArea}>
-          <SkeletonBox style={skeletonStyles.searchTitleBar} />
-          <SkeletonBox style={skeletonStyles.searchMetaBar} />
-          <SkeletonBox style={skeletonStyles.searchRatingBar} />
-        </View>
-      </View>
-    ))}
-  </View>
-);
-
-const PopcornLoader = () => {
-  const bounce1 = useRef(new Animated.Value(0)).current;
-  const bounce2 = useRef(new Animated.Value(0)).current;
-  const bounce3 = useRef(new Animated.Value(0)).current;
-  const spin = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const createBounce = (anim: Animated.Value, delay: number) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(delay),
-          Animated.timing(anim, { toValue: -12, duration: 300, useNativeDriver: true }),
-          Animated.timing(anim, { toValue: 0, duration: 300, useNativeDriver: true }),
-        ])
-      );
-    const spinAnim = Animated.loop(
-      Animated.timing(spin, { toValue: 1, duration: 2000, useNativeDriver: true })
-    );
-    createBounce(bounce1, 0).start();
-    createBounce(bounce2, 150).start();
-    createBounce(bounce3, 300).start();
-    spinAnim.start();
-    return () => {
-      bounce1.stopAnimation();
-      bounce2.stopAnimation();
-      bounce3.stopAnimation();
-      spin.stopAnimation();
-    };
-  }, [bounce1, bounce2, bounce3, spin]);
-
-  const rotation = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
-
-  return (
-    <View style={popcornStyles.container}>
-      <View style={popcornStyles.kernelRow}>
-        <Animated.View style={[popcornStyles.kernel, { transform: [{ translateY: bounce1 }] }]}>
-          <Ionicons name="film-outline" size={28} color={COLORS.primary} />
-        </Animated.View>
-        <Animated.View style={[popcornStyles.kernel, { transform: [{ translateY: bounce2 }] }]}>
-          <Ionicons name="videocam-outline" size={28} color={COLORS.accent} />
-        </Animated.View>
-        <Animated.View style={[popcornStyles.kernel, { transform: [{ translateY: bounce3 }] }]}>
-          <Ionicons name="film-outline" size={28} color={COLORS.teal} />
-        </Animated.View>
-      </View>
-      <Animated.View style={{ transform: [{ rotate: rotation }] }}>
-        <Ionicons name="film-outline" size={20} color={COLORS.primary} />
-      </Animated.View>
-      <Text style={popcornStyles.text}>Finding your next watch...</Text>
-    </View>
-  );
-};
-
-const DiscoverySkeleton = () => (
-  <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-    <View style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <SkeletonBox style={{ width: 6, height: 6, borderRadius: 3 }} />
-        <SkeletonBox style={{ width: 80, height: 14, borderRadius: BORDER_RADIUS.xs }} />
-      </View>
-      <SpotlightSkeleton />
-    </View>
-    <View style={styles.section}>
-      <View style={styles.sectionHeader}>
-        <SkeletonBox style={{ width: 6, height: 6, borderRadius: 3 }} />
-        <SkeletonBox style={{ width: 60, height: 14, borderRadius: BORDER_RADIUS.xs }} />
-      </View>
-      <PosterSkeleton />
-    </View>
-  </ScrollView>
-);
+import { useDiscoveryData } from '../hooks/useDiscoveryData';
+import { useSearch } from '../hooks/useSearch';
+import {
+  useDiscoveryDimensions,
+  DiscoverySkeleton,
+} from '../components/discovery/DiscoverySkeletons';
+import { PopcornLoader } from '../components/discovery/PopcornLoader';
+import { styles } from './DiscoveryScreen.styles';
 
 interface DiscoveryScreenProps {
   onSelectShow: (show: SearchResult) => void;
@@ -137,32 +32,40 @@ interface DiscoveryScreenProps {
   refreshRef?: (fn: (() => void) | null) => void;
 }
 
+const GENRES = [
+  { id: 28, name: 'Action', icon: 'flash-outline' },
+  { id: 35, name: 'Comedy', icon: 'happy-outline' },
+  { id: 18, name: 'Drama', icon: 'film-outline' },
+  { id: 27, name: 'Horror', icon: 'skull-outline' },
+  { id: 878, name: 'Sci-Fi', icon: 'rocket-outline' },
+  { id: 10749, name: 'Romance', icon: 'heart-half-outline' },
+  { id: 53, name: 'Thriller', icon: 'alert-circle-outline' },
+  { id: 16, name: 'Animation', icon: 'color-palette-outline' },
+  { id: 99, name: 'Documentary', icon: 'videocam-outline' },
+];
+
 export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, onBackRef, refreshRef }) => {
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [trending, setTrending] = useState<SearchResult[]>([]);
-  const [trendingMovies, setTrendingMovies] = useState<SearchResult[]>([]);
-  const [topRated, setTopRated] = useState<SearchResult[]>([]);
-  const [currentlyWatching, setCurrentlyWatching] = useState<CurrentlyWatchingItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [searchActive, setSearchActive] = useState(false);
-  const [searching, setSearching] = useState(false);
-  const [searchHistory, setSearchHistory] = useState<SearchResult[]>([]);
-  const [selectedGenre, setSelectedGenre] = useState<number | null>(null);
-  const [genreResults, setGenreResults] = useState<SearchResult[]>([]);
-  const [genreLoading, setGenreLoading] = useState(false);
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const {
+    trending, trendingMovies, topRated, currentlyWatching,
+    loading, refreshing, loadTrending, handleRefresh, refreshCW
+  } = useDiscoveryData();
+
+  const {
+    query, results, searchActive, setSearchActive, searching, searchHistory,
+    selectedGenre, genreResults, genreLoading, handleSearch, clearSearch,
+    handleGenreSelect, removeHistoryItem, clearAllHistory
+  } = useSearch();
+
+  const { spotlightWidth, posterWidth } = useDiscoveryDimensions();
 
   useEffect(() => {
     loadTrending();
-    return () => {
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    };
-  }, []);
+  }, [loadTrending]);
 
-  // Register back handler with parent
   useEffect(() => {
+    if (searchActive) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
     if (onBackRef) {
       onBackRef(() => {
         if (searchActive) {
@@ -173,12 +76,9 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
       });
     }
     return () => { onBackRef?.(null); };
-  }, [searchActive, onBackRef]);
+  }, [searchActive, onBackRef, clearSearch]);
 
-  // Expose silent currently-watching refresh to parent
-  const refreshCW = useCallback(async () => {
-    setCurrentlyWatching(await StorageProvider.getCurrentlyWatching());
-  }, []);
+  useDataEvent('currentlyWatching', refreshCW);
 
   const refreshCWRef = useRef(refreshCW);
   refreshCWRef.current = refreshCW;
@@ -186,126 +86,24 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
   useEffect(() => {
     if (refreshRef) refreshRef(() => { refreshCWRef.current(); });
     return () => { refreshRef?.(null); };
-  }, []);
-
-  const loadTrending = async (bustCache = false) => {
-    if (bustCache) {
-      tmdbService.clearCache();
-    }
-    setLoading(true);
-    const [tvData, movieData, topRatedData] = await Promise.all([
-      tmdbService.getTrending(),
-      tmdbService.getTrendingMovies(),
-      tmdbService.getTopRatedMovies(),
-    ]);
-    setTrending(tvData);
-    setTrendingMovies(movieData);
-    setTopRated(topRatedData);
-    setCurrentlyWatching(await StorageProvider.getCurrentlyWatching());
-    setLoading(false);
-  };
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await loadTrending(true);
-    setRefreshing(false);
-  };
-
-  const performSearch = useCallback(async (text: string) => {
-    if (text.length > 2) {
-      setLoading(true);
-      const searchResults = await tmdbService.search(text);
-      // Filter out 'person' results — only show movies and TV shows
-      const filtered = searchResults.filter((item: any) => item.media_type === 'movie' || item.media_type === 'tv');
-      setResults(filtered);
-      setLoading(false);
-      setSearching(false);
-    } else if (text.length === 0) {
-      setResults([]);
-      setSearching(false);
-    }
-  }, []);
-
-  const handleSearch = (text: string) => {
-    setQuery(text);
-    if (text.length > 2) {
-      setSearching(true);
-    } else {
-      setSearching(false);
-    }
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(() => {
-      performSearch(text);
-    }, 500);
-  };
-
-  const clearSearch = () => {
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    setQuery('');
-    setResults([]);
-    setSearching(false);
-    setSearchActive(false);
-  };
-
-  // Load search history when search becomes active
-  useEffect(() => {
-    if (searchActive) {
-      StorageProvider.getSearchHistory().then(setSearchHistory);
-    }
-  }, [searchActive]);
+  }, [refreshRef]);
 
   const handleSelectFromSearch = useCallback(async (item: SearchResult) => {
     await StorageProvider.addSearchHistoryItem(item);
     onSelectShow(item);
   }, [onSelectShow]);
 
-  const removeHistoryItem = useCallback(async (item: SearchResult) => {
-    await StorageProvider.removeSearchHistoryItem(item.id, item.media_type);
-    setSearchHistory(await StorageProvider.getSearchHistory());
-  }, []);
-
-  const clearAllHistory = useCallback(async () => {
-    await StorageProvider.clearSearchHistory();
-    setSearchHistory([]);
-  }, []);
-
-  const spotlight = trending.slice(0, 8);
-  const popular = trending.slice(8);
-
-  // ── Genre chips ──
-  const GENRES = [
-    { id: 28, name: 'Action', icon: 'flash-outline' },
-    { id: 35, name: 'Comedy', icon: 'happy-outline' },
-    { id: 18, name: 'Drama', icon: 'mask-outline' },
-    { id: 27, name: 'Horror', icon: 'skull-outline' },
-    { id: 878, name: 'Sci-Fi', icon: 'rocket-outline' },
-    { id: 10749, name: 'Romance', icon: 'heart-half-outline' },
-    { id: 53, name: 'Thriller', icon: 'alert-circle-outline' },
-    { id: 16, name: 'Animation', icon: 'color-palette-outline' },
-    { id: 99, name: 'Documentary', icon: 'videocam-outline' },
-  ];
-
-  const handleGenreSelect = async (genreId: number) => {
-    if (selectedGenre === genreId) {
-      setSelectedGenre(null);
-      setGenreResults([]);
-      return;
-    }
-    setSelectedGenre(genreId);
-    setGenreLoading(true);
-    const data = await tmdbService.discoverByGenre(genreId);
-    setGenreResults(data);
-    setGenreLoading(false);
-  };
+  const spotlight = trending.slice(0, CONFIG.LIMITS.SPOTLIGHT_LIMIT);
+  const popular = trending.slice(CONFIG.LIMITS.SPOTLIGHT_LIMIT);
 
   const renderSpotlightItem = ({ item }: { item: SearchResult }) => (
     <TouchableOpacity
       onPress={() => onSelectShow(item)}
       activeOpacity={0.8}
-      style={styles.spotlightCard}
+      style={[styles.spotlightCard, { width: spotlightWidth, height: spotlightWidth * CONFIG.LAYOUT.TRAILER_ASPECT_RATIO }]}
     >
       <Image
-        source={{ uri: tmdbService.getImageUrl(item.backdrop_path || item.poster_path, 'w780') }}
+        source={tmdbService.getImageSource(item.backdrop_path || item.poster_path, 'w780')}
         style={styles.spotlightImage}
         resizeMode="cover"
       />
@@ -330,11 +128,11 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
     <TouchableOpacity
       onPress={() => onSelectShow(item)}
       activeOpacity={0.8}
-      style={styles.posterCard}
+      style={[styles.posterCard, { width: posterWidth }]}
     >
-      <Image
-        source={{ uri: tmdbService.getImageUrl(item.poster_path) }}
-        style={styles.posterImage}
+      <FadeImage
+        source={tmdbService.getImageSource(item.poster_path)}
+        style={[styles.posterImage, { width: posterWidth }]}
         resizeMode="cover"
       />
       <Text style={styles.posterTitle} numberOfLines={2}>
@@ -349,8 +147,8 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
       activeOpacity={0.7}
       style={styles.searchResultCard}
     >
-      <Image
-        source={{ uri: tmdbService.getImageUrl(item.poster_path) }}
+      <FadeImage
+        source={tmdbService.getImageSource(item.poster_path)}
         style={styles.searchPoster}
       />
       <View style={styles.searchInfo}>
@@ -366,7 +164,44 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
     </TouchableOpacity>
   );
 
-  if (loading && trending.length === 0) {
+  const handleRemoveCW = async (item: CurrentlyWatchingItem) => {
+    Alert.alert(
+      "Remove Show",
+      `Remove "${item.name}" from Currently Watching?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            await StorageProvider.removeFromCurrentlyWatching(item.seriesId);
+            refreshCW();
+          }
+        }
+      ]
+    );
+  };
+
+  const renderCurrentlyWatchingItem = ({ item }: { item: CurrentlyWatchingItem }) => (
+    <TouchableOpacity
+      key={`cw-${item.seriesId}`}
+      onPress={() => onSelectShow({ id: item.seriesId, media_type: 'tv', name: item.name, poster_path: item.posterPath } as SearchResult)}
+      onLongPress={() => handleRemoveCW(item)}
+      activeOpacity={0.8}
+      style={[styles.posterCard, { width: posterWidth }]}
+    >
+      <FadeImage
+        source={tmdbService.getImageSource(item.posterPath)}
+        style={[styles.posterImage, { width: posterWidth }]}
+        resizeMode="cover"
+      />
+      <Text style={styles.posterTitle} numberOfLines={2}>
+        {item.name}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  if (loading && trending.length === 0 && topRated.length === 0) {
     return (
       <View style={styles.container}>
         <SafeAreaView style={styles.safeArea}>
@@ -422,7 +257,7 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
           </View>
         )}
 
-        {/* Recent Searches — shows/movies the user previously tapped */}
+        {/* Recent Searches */}
         {searchActive && query.length <= 2 && searchHistory.length > 0 ? (
           <View style={styles.recentSearches}>
             <View style={styles.recentHeader}>
@@ -439,8 +274,8 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
                 activeOpacity={0.7}
               >
                 {item.poster_path ? (
-                  <Image
-                    source={{ uri: tmdbService.getImageUrl(item.poster_path, 'w92') }}
+                  <FadeImage
+                    source={tmdbService.getImageSource(item.poster_path, 'w92')}
                     style={styles.recentPoster}
                   />
                 ) : (
@@ -484,7 +319,6 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
             }
           />
         ) : (
-          /* Browse Sections */
           <ScrollView
             showsVerticalScrollIndicator={false}
             keyboardDismissMode="on-drag"
@@ -504,42 +338,19 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
                 <View style={styles.sectionDot} />
                 <Text style={styles.sectionTitle}>Spotlight</Text>
               </View>
-              <ScrollView
+              <FlatList
+                data={spotlight}
+                renderItem={renderSpotlightItem}
+                keyExtractor={(item) => `spot-${item.id}`}
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.spotlightList}
-                snapToInterval={SPOTLIGHT_WIDTH + SPACING.s}
+                snapToInterval={spotlightWidth + SPACING.s}
                 decelerationRate="fast"
-              >
-                {spotlight.map(item => (
-                  <TouchableOpacity
-                    key={`spot-${item.id}`}
-                    onPress={() => onSelectShow(item)}
-                    activeOpacity={0.8}
-                    style={styles.spotlightCard}
-                  >
-                    <Image
-                      source={{ uri: tmdbService.getImageUrl(item.backdrop_path || item.poster_path, 'w780') }}
-                      style={styles.spotlightImage}
-                      resizeMode="cover"
-                    />
-                    <LinearGradient
-                      colors={['transparent', 'rgba(7,7,11,0.9)']}
-                      style={styles.spotlightGradient}
-                    >
-                      <View style={styles.spotlightInfo}>
-                        <Text style={styles.spotlightTitle} numberOfLines={1}>
-                          {item.name || item.title}
-                        </Text>
-                        <View style={styles.spotlightMeta}>
-                          <View style={[styles.ratingDot, { backgroundColor: getRatingColor(item.vote_average) }]} />
-                          <Text style={styles.spotlightRating}>{(item.vote_average || 0).toFixed(1)}</Text>
-                        </View>
-                      </View>
-                    </LinearGradient>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+                initialNumToRender={2}
+                windowSize={3}
+                maxToRenderPerBatch={2}
+              />
             </View>
 
             {/* Currently Watching */}
@@ -549,42 +360,17 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
                   <View style={[styles.sectionDot, { backgroundColor: COLORS.teal }]} />
                   <Text style={styles.sectionTitle}>Currently Watching</Text>
                 </View>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.posterList}>
-                  {currentlyWatching.map(item => (
-                    <TouchableOpacity
-                      key={`cw-${item.seriesId}`}
-                      onPress={() => onSelectShow({ id: item.seriesId, media_type: 'tv', name: item.name, poster_path: item.posterPath } as SearchResult)}
-                      onLongPress={() => {
-                        Alert.alert(
-                          "Remove Show",
-                          `Remove "${item.name}" from Currently Watching?`,
-                          [
-                            { text: "Cancel", style: "cancel" },
-                            {
-                              text: "Remove",
-                              style: "destructive",
-                              onPress: async () => {
-                                await StorageProvider.removeFromCurrentlyWatching(item.seriesId);
-                                setCurrentlyWatching(await StorageProvider.getCurrentlyWatching());
-                              }
-                            }
-                          ]
-                        );
-                      }}
-                      activeOpacity={0.8}
-                      style={styles.posterCard}
-                    >
-                      <Image
-                        source={{ uri: tmdbService.getImageUrl(item.posterPath) }}
-                        style={styles.posterImage}
-                        resizeMode="cover"
-                      />
-                      <Text style={styles.posterTitle} numberOfLines={2}>
-                        {item.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                <FlatList
+                  data={currentlyWatching}
+                  renderItem={renderCurrentlyWatchingItem}
+                  keyExtractor={(item) => `cw-${item.seriesId}`}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.posterList}
+                  initialNumToRender={3}
+                  windowSize={3}
+                  maxToRenderPerBatch={3}
+                />
               </View>
             )}
 
@@ -594,25 +380,16 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
                 <View style={styles.sectionDot} />
                 <Text style={styles.sectionTitle}>Popular</Text>
               </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.posterList}>
-                {(popular.length > 0 ? popular : trending).map(item => (
-                  <TouchableOpacity
-                    key={`pop-${item.id}`}
-                    onPress={() => onSelectShow(item)}
-                    activeOpacity={0.8}
-                    style={styles.posterCard}
-                  >
-                    <Image
-                      source={{ uri: tmdbService.getImageUrl(item.poster_path) }}
-                      style={styles.posterImage}
-                      resizeMode="cover"
-                    />
-                    <Text style={styles.posterTitle} numberOfLines={2}>
-                      {item.name || item.title}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+              <FlatList
+                data={popular.length > 0 ? popular : trending}
+                renderItem={renderPosterItem}
+                keyExtractor={(item) => `pop-${item.id}`}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.posterList}
+                initialNumToRender={4}
+                windowSize={3}
+              />
             </View>
 
             {/* Trending Movies */}
@@ -621,25 +398,16 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
                 <View style={styles.sectionDot} />
                 <Text style={styles.sectionTitle}>Trending Movies</Text>
               </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.posterList}>
-                {trendingMovies.slice(0, 12).map(item => (
-                  <TouchableOpacity
-                    key={`tmov-${item.id}`}
-                    onPress={() => onSelectShow(item)}
-                    activeOpacity={0.8}
-                    style={styles.posterCard}
-                  >
-                    <Image
-                      source={{ uri: tmdbService.getImageUrl(item.poster_path) }}
-                      style={styles.posterImage}
-                      resizeMode="cover"
-                    />
-                    <Text style={styles.posterTitle} numberOfLines={2}>
-                      {item.name || item.title}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+              <FlatList
+                data={trendingMovies.slice(0, CONFIG.LIMITS.TRENDING_SLICE_LIMIT)}
+                renderItem={renderPosterItem}
+                keyExtractor={(item) => `tmov-${item.id}`}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.posterList}
+                initialNumToRender={4}
+                windowSize={3}
+              />
             </View>
 
             {/* Genre Chips */}
@@ -661,32 +429,22 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
                   </TouchableOpacity>
                 ))}
               </ScrollView>
-              {/* Genre results */}
               {selectedGenre && (
                 genreLoading ? (
                   <View style={{ paddingVertical: SPACING.l, alignItems: 'center' }}>
                     <ActivityIndicator color={COLORS.primary} />
                   </View>
                 ) : genreResults.length > 0 ? (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.posterList, { marginTop: SPACING.m }]}>
-                    {genreResults.slice(0, 12).map(item => (
-                      <TouchableOpacity
-                        key={`genre-r-${item.id}`}
-                        onPress={() => onSelectShow(item)}
-                        activeOpacity={0.8}
-                        style={styles.posterCard}
-                      >
-                        <Image
-                          source={{ uri: tmdbService.getImageUrl(item.poster_path) }}
-                          style={styles.posterImage}
-                          resizeMode="cover"
-                        />
-                        <Text style={styles.posterTitle} numberOfLines={2}>
-                          {item.name || item.title}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
+                  <FlatList
+                    data={genreResults.slice(0, CONFIG.LIMITS.TRENDING_SLICE_LIMIT)}
+                    renderItem={renderPosterItem}
+                    keyExtractor={(item) => `genre-r-${item.id}`}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={[styles.posterList, { marginTop: SPACING.m }]}
+                    initialNumToRender={4}
+                    windowSize={3}
+                  />
                 ) : null
               )}
             </View>
@@ -698,25 +456,16 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
                   <View style={[styles.sectionDot, { backgroundColor: COLORS.teal }]} />
                   <Text style={styles.sectionTitle}>Top Rated</Text>
                 </View>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.posterList}>
-                  {topRated.slice(0, 12).map(item => (
-                    <TouchableOpacity
-                      key={`top-${item.id}`}
-                      onPress={() => onSelectShow(item)}
-                      activeOpacity={0.8}
-                      style={styles.posterCard}
-                    >
-                      <Image
-                        source={{ uri: tmdbService.getImageUrl(item.poster_path) }}
-                        style={styles.posterImage}
-                        resizeMode="cover"
-                      />
-                      <Text style={styles.posterTitle} numberOfLines={2}>
-                        {item.name || item.title}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                <FlatList
+                  data={topRated.slice(0, CONFIG.LIMITS.TRENDING_SLICE_LIMIT)}
+                  renderItem={renderPosterItem}
+                  keyExtractor={(item) => `top-${item.id}`}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.posterList}
+                  initialNumToRender={4}
+                  windowSize={3}
+                />
               </View>
             )}
           </ScrollView>
@@ -725,406 +474,3 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  safeArea: {
-    flex: 1,
-    paddingTop: Platform.OS === 'android' ? 44 : 0,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: SPACING.xxl,
-    gap: SPACING.s,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING.m,
-    paddingVertical: SPACING.s,
-  },
-  headerTitle: {
-    color: COLORS.primary,
-    fontFamily: FONTS.display,
-    fontSize: 28,
-    letterSpacing: -0.5,
-  },
-  searchToggle: {
-    width: 40,
-    height: 40,
-    borderRadius: BORDER_RADIUS.round,
-    backgroundColor: COLORS.card,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: SPACING.m,
-    marginBottom: SPACING.m,
-    paddingHorizontal: SPACING.m,
-    height: 48,
-    borderRadius: BORDER_RADIUS.m,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-    gap: SPACING.s,
-  },
-  searchInput: {
-    flex: 1,
-    color: COLORS.text.primary,
-    fontFamily: FONTS.body,
-    fontSize: 15,
-  },
-  clearButton: {
-    padding: 4,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  recentSearches: {
-    flex: 1,
-    paddingHorizontal: SPACING.m,
-    paddingTop: SPACING.s,
-  },
-  recentHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.s,
-  },
-  recentTitle: {
-    fontFamily: FONTS.bodySemiBold,
-    fontSize: 13,
-    color: COLORS.text.secondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  recentClear: {
-    fontFamily: FONTS.body,
-    fontSize: 13,
-    color: COLORS.primary,
-  },
-  recentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: SPACING.s,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: COLORS.borderLight,
-  },
-  recentPoster: {
-    width: 36,
-    height: 54,
-    borderRadius: 4,
-    marginRight: SPACING.s,
-    backgroundColor: COLORS.surface,
-  },
-  recentPosterPlaceholder: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recentInfo: {
-    flex: 1,
-    marginRight: SPACING.s,
-  },
-  recentItemTitle: {
-    fontFamily: FONTS.body,
-    fontSize: 14,
-    color: COLORS.text.primary,
-  },
-  recentItemMeta: {
-    fontFamily: FONTS.body,
-    fontSize: 12,
-    color: COLORS.text.muted,
-    marginTop: 2,
-  },
-  searchList: {
-    paddingHorizontal: SPACING.m,
-    paddingBottom: 100,
-  },
-  searchResultCard: {
-    flexDirection: 'row',
-    paddingVertical: SPACING.m,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
-    gap: SPACING.m,
-  },
-  searchPoster: {
-    width: 56,
-    height: 84,
-    borderRadius: BORDER_RADIUS.xs,
-    backgroundColor: COLORS.card,
-  },
-  searchInfo: {
-    flex: 1,
-    justifyContent: 'center',
-    gap: 4,
-  },
-  searchTitle: {
-    color: COLORS.text.primary,
-    fontFamily: FONTS.heading,
-    fontSize: 15,
-  },
-  searchMeta: {
-    color: COLORS.text.secondary,
-    fontFamily: FONTS.body,
-    fontSize: 13,
-  },
-  searchRatingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  searchRatingText: {
-    color: COLORS.text.secondary,
-    fontFamily: FONTS.mono,
-    fontSize: 12,
-  },
-  emptyText: {
-    color: COLORS.text.muted,
-    fontFamily: FONTS.body,
-    fontSize: 14,
-  },
-  scrollContent: {
-    paddingBottom: 120,
-  },
-  section: {
-    marginBottom: SPACING.xl,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.m,
-    marginBottom: SPACING.m,
-    gap: SPACING.s,
-  },
-  sectionDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.primary,
-  },
-  sectionTitle: {
-    color: COLORS.text.primary,
-    fontFamily: FONTS.heading,
-    fontSize: 14,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  spotlightList: {
-    paddingLeft: SPACING.m,
-    gap: SPACING.s,
-  },
-  spotlightCard: {
-    width: SPOTLIGHT_WIDTH,
-    height: SPOTLIGHT_WIDTH * 0.56,
-    borderRadius: BORDER_RADIUS.l,
-    overflow: 'hidden',
-    backgroundColor: COLORS.card,
-  },
-  spotlightImage: {
-    width: '100%',
-    height: '100%',
-  },
-  spotlightGradient: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: '55%',
-    justifyContent: 'flex-end',
-    padding: SPACING.m,
-  },
-  spotlightInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-  },
-  spotlightTitle: {
-    flex: 1,
-    color: COLORS.text.primary,
-    fontFamily: FONTS.heading,
-    fontSize: 16,
-    marginRight: SPACING.s,
-  },
-  spotlightMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  spotlightRating: {
-    color: COLORS.text.secondary,
-    fontFamily: FONTS.mono,
-    fontSize: 13,
-  },
-  ratingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  posterList: {
-    paddingLeft: SPACING.m,
-    gap: SPACING.s,
-  },
-  posterCard: {
-    width: POSTER_WIDTH,
-    gap: SPACING.xs,
-  },
-  posterImage: {
-    width: POSTER_WIDTH,
-    aspectRatio: 2 / 3,
-    borderRadius: BORDER_RADIUS.s,
-    backgroundColor: COLORS.card,
-  },
-  posterTitle: {
-    color: COLORS.text.secondary,
-    fontFamily: FONTS.bodyMedium,
-    fontSize: 12,
-  },
-  genreChipList: {
-    paddingLeft: SPACING.m,
-    gap: SPACING.s,
-    paddingRight: SPACING.m,
-  },
-  genreChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: SPACING.m,
-    paddingVertical: SPACING.s,
-    borderRadius: BORDER_RADIUS.round,
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-  },
-  genreChipActive: {
-    backgroundColor: COLORS.primaryMuted,
-    borderColor: COLORS.primary,
-  },
-  genreChipEmoji: {
-    fontSize: 14,
-  },
-  genreChipText: {
-    fontFamily: FONTS.bodyMedium,
-    fontSize: 13,
-    color: COLORS.text.secondary,
-  },
-  genreChipTextActive: {
-    color: COLORS.primary,
-  },
-});
-
-const skeletonStyles = StyleSheet.create({
-  spotlightRow: {
-    flexDirection: 'row',
-    paddingLeft: SPACING.m,
-    gap: SPACING.s,
-  },
-  spotlightCard: {
-    width: SPOTLIGHT_WIDTH,
-    height: SPOTLIGHT_WIDTH * 0.56,
-    borderRadius: BORDER_RADIUS.l,
-    overflow: 'hidden',
-  },
-  spotlightImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: BORDER_RADIUS.l,
-  },
-  spotlightTextArea: {
-    position: 'absolute',
-    bottom: SPACING.m,
-    left: SPACING.m,
-    right: SPACING.m,
-    gap: SPACING.xs,
-  },
-  titleBar: {
-    width: '60%',
-    height: 16,
-    borderRadius: BORDER_RADIUS.xs,
-  },
-  ratingBar: {
-    width: 40,
-    height: 12,
-    borderRadius: BORDER_RADIUS.xs,
-  },
-  posterRow: {
-    flexDirection: 'row',
-    paddingLeft: SPACING.m,
-    gap: SPACING.s,
-  },
-  posterCard: {
-    width: POSTER_WIDTH,
-    gap: SPACING.xs,
-  },
-  posterImage: {
-    width: POSTER_WIDTH,
-    aspectRatio: 2 / 3,
-    borderRadius: BORDER_RADIUS.s,
-  },
-  posterTitleBar: {
-    width: '70%',
-    height: 12,
-    borderRadius: BORDER_RADIUS.xs,
-  },
-  searchRow: {
-    flexDirection: 'row',
-    paddingVertical: SPACING.m,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
-    gap: SPACING.m,
-  },
-  searchPoster: {
-    width: 56,
-    height: 84,
-    borderRadius: BORDER_RADIUS.xs,
-  },
-  searchTextArea: {
-    flex: 1,
-    justifyContent: 'center',
-    gap: SPACING.s,
-  },
-  searchTitleBar: {
-    width: '65%',
-    height: 15,
-    borderRadius: BORDER_RADIUS.xs,
-  },
-  searchMetaBar: {
-    width: '40%',
-    height: 13,
-    borderRadius: BORDER_RADIUS.xs,
-  },
-  searchRatingBar: {
-    width: 30,
-    height: 12,
-    borderRadius: BORDER_RADIUS.xs,
-  },
-});
-
-const popcornStyles = StyleSheet.create({
-  container: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.xxl * 1.5,
-    gap: SPACING.m,
-  },
-  kernelRow: {
-    flexDirection: 'row',
-    gap: SPACING.m,
-    marginBottom: SPACING.s,
-  },
-  kernel: {
-    padding: SPACING.xs,
-  },
-  text: {
-    color: COLORS.text.secondary,
-    fontFamily: FONTS.bodyMedium,
-    fontSize: 14,
-    marginTop: SPACING.xs,
-  },
-});

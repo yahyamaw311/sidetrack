@@ -63,8 +63,8 @@ export const ErrorNotifierProvider: React.FC<{ children: React.ReactNode }> = ({
       {/* Toast stack rendered on top of everything */}
       {notifications.length > 0 && (
         <View style={styles.toastStack} pointerEvents="box-none">
-          {notifications.map((notif, index) => (
-            <ErrorToast key={notif.id} notif={notif} index={index} onDismiss={dismiss} />
+          {notifications.map((notif) => (
+            <ErrorToast key={notif.id} notif={notif} onDismiss={dismiss} />
           ))}
         </View>
       )}
@@ -72,7 +72,7 @@ export const ErrorNotifierProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 };
 
-const ErrorToast: React.FC<{ notif: ErrorNotification; index: number; onDismiss: (id: number) => void }> = ({ notif, index, onDismiss }) => {
+const ErrorToast: React.FC<{ notif: ErrorNotification; onDismiss: (id: number) => void }> = ({ notif, onDismiss }) => {
   const slideAnim = useRef(new Animated.Value(60)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 

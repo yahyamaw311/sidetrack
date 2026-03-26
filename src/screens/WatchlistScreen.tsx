@@ -1,13 +1,16 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, Platform, Alert, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS } from '../constants/theme';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
+import { CONFIG } from '../constants/config';
 import { tmdbService } from '../services/tmdbService';
 import { StorageProvider } from '../services/StorageProvider';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { SkeletonBox } from '../components/SkeletonBox';
+import { FadeImage } from '../components/FadeImage';
 import { QueuedItem } from '../types';
+import { useDataEvent } from '../hooks/useDataEvent';
 
 const WatchlistSkeleton = () => (
   <View style={{ flex: 1, paddingHorizontal: SPACING.m, paddingTop: SPACING.s }}>
@@ -40,7 +43,7 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
   const [items, setItems] = useState<QueuedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<WatchlistFilter>('all');
-  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
 
   const loadWatchlist = useCallback(async () => {
     setLoading(true);
@@ -59,6 +62,8 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
     loadWatchlist();
   }, [loadWatchlist]);
 
+  useDataEvent('watchlist', silentRefresh);
+
   // Expose refresh to parent so it can trigger reload when detail closes
   const refreshFnRef = useRef(silentRefresh);
   refreshFnRef.current = silentRefresh;
@@ -68,17 +73,18 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
     return () => { refreshRef?.(null); };
   }, []);  // Run once — stable callback via ref
 
-  const handleRemove = async (seriesId: number) => {
-    setDeletingIds(prev => new Set(prev).add(seriesId));
+  const handleRemove = async (seriesId: number, itemType: 'tv' | 'movie') => {
+    const key = `${itemType}_${seriesId}`;
+    setDeletingIds(prev => new Set(prev).add(key));
     try {
-      await StorageProvider.removeFromWatchlist(seriesId);
+      await StorageProvider.removeFromWatchlist(seriesId, itemType);
       // Wait a fraction of a second to show the spinner before disappearing
-      await new Promise(resolve => setTimeout(resolve, 300));
-      setItems(prev => prev.filter(i => i.seriesId !== seriesId));
+      await new Promise(resolve => setTimeout(resolve, CONFIG.TIMING.PULL_TO_REFRESH_DELAY));
+      setItems(prev => prev.filter(i => !(i.seriesId === seriesId && (i.itemType || 'tv') === itemType)));
     } finally {
       setDeletingIds(prev => {
         const next = new Set(prev);
-        next.delete(seriesId);
+        next.delete(key);
         return next;
       });
     }
@@ -90,9 +96,10 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
   };
 
   const renderItem = ({ item }: { item: QueuedItem }) => {
-    const isDeleting = deletingIds.has(item.seriesId);
+    const key = `${item.itemType || 'tv'}_${item.seriesId}`;
+    const isDeleting = deletingIds.has(key);
     return (
-      <SwipeableRow onDelete={() => handleRemove(item.seriesId)}>
+      <SwipeableRow onDelete={() => handleRemove(item.seriesId, item.itemType || 'tv')}>
         <View>
           <TouchableOpacity
             onPress={() => onSelectShow(item.seriesId, item.itemType || 'tv')}
@@ -100,8 +107,8 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
             activeOpacity={0.7}
             disabled={isDeleting}
           >
-            <Image
-              source={{ uri: tmdbService.getImageUrl(item.posterPath) }}
+            <FadeImage
+              source={tmdbService.getImageSource(item.posterPath)}
               style={styles.poster}
               resizeMode="cover"
             />
@@ -215,7 +222,7 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    paddingTop: Platform.OS === 'android' ? 44 : 0,
+    paddingTop: CONFIG.LAYOUT.SAFE_AREA_PADDING_TOP,
   },
   header: {
     flexDirection: 'row',
@@ -231,7 +238,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   countBadge: {
-    paddingHorizontal: 10,
+    paddingHorizontal: SPACING.s + 2,
     paddingVertical: 3,
     borderRadius: BORDER_RADIUS.round,
     backgroundColor: COLORS.primaryMuted,

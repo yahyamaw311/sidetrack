@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, TextInput, Modal, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
 import { tmdbService } from '../services/tmdbService';
 import { MovieDetail } from '../types';
 import { SwipeableStars } from './SwipeableStars';
 import { DatePickerModal } from './DatePicker';
+import { FadeImage } from './FadeImage';
 
 interface InitialData {
     rating?: number;
@@ -58,7 +59,8 @@ export const WatchedMovieModal: React.FC<WatchedMovieModalProps> = ({
             setTags(initialData.tags ?? '');
             setRewatch(initialData.rewatch ?? false);
             setNoSpoilers(initialData.noSpoilers ?? false);
-            setWatchedDate(initialData.watchedDate ?? new Date());
+            const d = initialData.watchedDate ?? new Date();
+            setWatchedDate(d > new Date() ? new Date() : d);
         } else if (visible) {
             setRating(0);
             setLiked(false);
@@ -71,7 +73,10 @@ export const WatchedMovieModal: React.FC<WatchedMovieModalProps> = ({
     }, [visible]);
 
     const handleConfirm = () => {
-        onConfirm({ rating, liked, review, tags, rewatch, noSpoilers, watchedDate });
+        if (rating === 0) return;
+        const cleanTags = Array.from(new Set(tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean))).join(', ');
+        const clampedDate = watchedDate > new Date() ? new Date() : watchedDate;
+        onConfirm({ rating, liked, review: review.trim(), tags: cleanTags, rewatch, noSpoilers, watchedDate: clampedDate });
         // Reset state
         setRating(0);
         setLiked(false);
@@ -112,8 +117,12 @@ export const WatchedMovieModal: React.FC<WatchedMovieModalProps> = ({
                             <Ionicons name="close" size={22} color={COLORS.text.primary} />
                         </TouchableOpacity>
                         <Text style={styles.headerTitle}>{initialData ? 'Edit Entry' : 'I Watched'}</Text>
-                        <TouchableOpacity onPress={handleConfirm} style={styles.headerBtn}>
-                            <Ionicons name="checkmark" size={22} color={COLORS.text.primary} />
+                        <TouchableOpacity
+                            onPress={handleConfirm}
+                            style={styles.headerBtn}
+                            disabled={rating === 0}
+                        >
+                            <Ionicons name="checkmark" size={22} color={rating === 0 ? COLORS.text.muted : COLORS.text.primary} />
                         </TouchableOpacity>
                     </View>
 
@@ -122,8 +131,8 @@ export const WatchedMovieModal: React.FC<WatchedMovieModalProps> = ({
                         {movie && (
                             <View style={styles.episodeInfo}>
                                 {movie.poster_path ? (
-                                    <Image
-                                        source={{ uri: tmdbService.getImageUrl(movie.poster_path, 'w185') }}
+                                    <FadeImage
+                                        source={tmdbService.getImageSource(movie.poster_path, 'w300')}
                                         style={styles.episodeThumb}
                                     />
                                 ) : (
@@ -136,7 +145,7 @@ export const WatchedMovieModal: React.FC<WatchedMovieModalProps> = ({
                                         {movie.title}
                                     </Text>
                                     <Text style={styles.episodeSub} numberOfLines={1}>
-                                       {movie.release_date?.split('-')[0]} · {movie.runtime}m
+                                        {movie.release_date?.split('-')[0]} · {movie.runtime}m
                                     </Text>
                                 </View>
                             </View>
@@ -190,6 +199,7 @@ export const WatchedMovieModal: React.FC<WatchedMovieModalProps> = ({
                             onChangeText={setReview}
                             multiline
                             textAlignVertical="top"
+                            maxLength={2000}
                         />
                         <View style={styles.separator} />
 
@@ -200,6 +210,7 @@ export const WatchedMovieModal: React.FC<WatchedMovieModalProps> = ({
                             placeholderTextColor={COLORS.text.muted}
                             value={tags}
                             onChangeText={setTags}
+                            maxLength={100}
                         />
                         <View style={styles.separator} />
 

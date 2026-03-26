@@ -1,13 +1,15 @@
 import axios from 'axios';
+import { ImageSourcePropType } from 'react-native';
 import Constants from 'expo-constants';
 import { TMDBResponse, SearchResult, TVShowDetail, SeasonDetail, MovieDetail, EpisodeDetailData } from '../types';
 import { notifyErrorGlobal } from '../contexts/ErrorNotifier';
+import { CONFIG } from '../constants/config';
 
 const TMDB_API_KEY = Constants.expoConfig?.extra?.tmdbApiKey
   || process.env.EXPO_PUBLIC_TMDB_API_KEY
   || '';
-const BASE_URL = 'https://api.themoviedb.org/3';
-const IMDB_GRAPHQL_URL = 'https://graphql.imdb.com';
+const BASE_URL = Constants.expoConfig?.extra?.tmdbBaseUrl || 'https://api.themoviedb.org/3';
+const IMDB_GRAPHQL_URL = Constants.expoConfig?.extra?.imdbGraphqlUrl || 'https://graphql.imdb.com';
 
 // Helper to determine auth method
 const isBearerToken = TMDB_API_KEY.length > 50;
@@ -15,10 +17,13 @@ const isBearerToken = TMDB_API_KEY.length > 50;
 const tmdbClient = axios.create({
   baseURL: BASE_URL,
   timeout: 10000,
-  headers: isBearerToken ? {
-    Authorization: `Bearer ${TMDB_API_KEY}`,
-    'Content-Type': 'application/json',
-  } : undefined,
+  headers: {
+    'User-Agent': 'Sidetrack/1.0',
+    ...(isBearerToken ? {
+      Authorization: `Bearer ${TMDB_API_KEY}`,
+      'Content-Type': 'application/json',
+    } : {}),
+  },
   params: isBearerToken ? {
     language: 'en-US',
   } : {
@@ -27,45 +32,99 @@ const tmdbClient = axios.create({
   },
 });
 
-// --- In-memory cache (5 min TTL, max 100 entries) ---
-const CACHE_TTL = 5 * 60 * 1000;
-const CACHE_MAX_SIZE = 100;
-const cache = new Map<string, { data: any; timestamp: number }>();
+// --- In-memory cache (5 min TTL, bounded by count and memory) ---
+const CACHE_TTL = CONFIG.API.CACHE_TTL_MS;
+const CACHE_MAX_ENTRIES = CONFIG.LIMITS.CACHE_MAX_ENTRIES;
+const CACHE_MAX_ENTRY_BYTES = 200 * 1024;   // ~200 KB per entry
+const CACHE_MAX_TOTAL_BYTES = 5 * 1024 * 1024; // ~5 MB total
+
+interface CacheEntry { data: any; timestamp: number; size: number }
+
+// Hot-reload safe module state: clear stale globals when module re-evaluates
+const _gen = Symbol.for('__tmdb_gen__');
+const _prev = (globalThis as any)[_gen] ?? 0;
+(globalThis as any)[_gen] = _prev + 1;
+
+let cache = new Map<string, CacheEntry>();
+let cacheBytes = 0;
+let activeCount = 0;
+let queue: Array<() => void> = [];
+
+if (_prev > 0) {
+  // Module was re-evaluated (hot reload) — reset everything
+  cache = new Map();
+  cacheBytes = 0;
+  activeCount = 0;
+  queue = [];
+}
+
+/** Rough byte-size estimate (avoids full serialisation cost) */
+function estimateSize(data: any): number {
+  try {
+    return JSON.stringify(data).length * 2; // ~2 bytes per UTF-16 char
+  } catch {
+    return CACHE_MAX_ENTRY_BYTES + 1; // treat un-serialisable data as too large
+  }
+}
 
 function getCached<T>(key: string): T | null {
   const entry = cache.get(key);
   if (entry && Date.now() - entry.timestamp < CACHE_TTL) {
     return entry.data as T;
   }
-  cache.delete(key);
+  if (entry) {
+    cacheBytes -= entry.size;
+    cache.delete(key);
+  }
   return null;
 }
 
 function setCache(key: string, data: any) {
-  cache.set(key, { data, timestamp: Date.now() });
-  // Evict oldest entries when cache exceeds max size
-  if (cache.size > CACHE_MAX_SIZE) {
-    const keysToDelete = Array.from(cache.keys()).slice(0, cache.size - CACHE_MAX_SIZE);
-    keysToDelete.forEach(k => cache.delete(k));
+  // Remove previous version of same key
+  const prev = cache.get(key);
+  if (prev) {
+    cacheBytes -= prev.size;
+    cache.delete(key);
+  }
+
+  const size = estimateSize(data);
+  if (size > CACHE_MAX_ENTRY_BYTES) return; // drop oversized entries silently
+
+  cache.set(key, { data, timestamp: Date.now(), size });
+  cacheBytes += size;
+
+  // Evict oldest entries when over count or memory budget
+  const keys = Array.from(cache.keys());
+  let i = 0;
+  while ((cache.size > CACHE_MAX_ENTRIES || cacheBytes > CACHE_MAX_TOTAL_BYTES) && i < keys.length) {
+    const old = cache.get(keys[i]);
+    if (old) {
+      cacheBytes -= old.size;
+      cache.delete(keys[i]);
+    }
+    i++;
   }
 }
 
 /** Drop all in-memory cached entries */
 function clearCache() {
   cache.clear();
+  cacheBytes = 0;
 }
 
 /** Drop cached entries whose key starts with the given prefix */
 function invalidatePrefix(prefix: string) {
   for (const key of Array.from(cache.keys())) {
-    if (key.startsWith(prefix)) cache.delete(key);
+    if (key.startsWith(prefix)) {
+      const entry = cache.get(key);
+      if (entry) cacheBytes -= entry.size;
+      cache.delete(key);
+    }
   }
 }
 
 // --- Concurrency limiter for IMDb calls ---
-const MAX_CONCURRENT = 3;
-let activeCount = 0;
-const queue: Array<() => void> = [];
+const MAX_CONCURRENT = CONFIG.LIMITS.MAX_CONCURRENT_API_CALLS;
 
 async function withConcurrencyLimit<T>(fn: () => Promise<T>): Promise<T> {
   if (activeCount >= MAX_CONCURRENT) {
@@ -250,12 +309,12 @@ export const tmdbService = {
   },
 
   /**
-   * Get image URL
-   * size: 'w500', 'original', etc.
+   * Get image source for React Native Image component
+   * size: 'w342', 'w500', 'original', etc.
    */
-  getImageUrl: (path: string | null, size: string = 'w500'): string => {
-    if (!path) return 'https://via.placeholder.com/500x750?text=No+Image';
-    return `https://image.tmdb.org/t/p/${size}${path}`;
+  getImageSource: (path: string | null, size: string = 'w342'): ImageSourcePropType => {
+    if (!path) return require('../../assets/no-poster.png');
+    return { uri: `${CONFIG.API.TMDB_IMAGE_BASE}${size}${path}` };
   },
 
   /**
@@ -268,9 +327,13 @@ export const tmdbService = {
     if (cached) return cached;
     try {
       const response = await axios.post(IMDB_GRAPHQL_URL, {
-        query: `{ title(id: "${imdbId}") { ratingsSummary { aggregateRating voteCount } } }`,
+        query: `query GetImdbTitle($id: ID!) { title(id: $id) { ratingsSummary { aggregateRating voteCount } } }`,
+        variables: { id: imdbId },
       }, {
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'Sidetrack/1.0',
+        },
         timeout: 10000,
       });
       const data = response.data?.data?.title?.ratingsSummary;

@@ -1,5 +1,5 @@
 import { StorageProvider } from './StorageProvider';
-import { WatchedMovie, WatchedEpisode, FavoriteMovie } from '../types';
+import { WatchedMovie, WatchedEpisode } from '../types';
 
 // ── Types ──
 
@@ -107,7 +107,6 @@ const determinePersonality = (stats: Partial<WrappedStats>, movies: WatchedMovie
     const avgRating = movies.length > 0 ? movies.reduce((s, m) => s + m.rating, 0) / movies.length : 0;
     const epAvg = episodes.length > 0 ? episodes.reduce((s, e) => s + e.rating, 0) / episodes.length : 0;
     const combinedAvg = (avgRating + epAvg) / (movies.length > 0 && episodes.length > 0 ? 2 : 1);
-    const rewatches = movies.filter(m => m.watchedDate).length; // approximate
     const reviewCount = [...movies.filter(m => (m as any).review), ...episodes.filter(e => e.review)].length;
 
     // Check for patterns

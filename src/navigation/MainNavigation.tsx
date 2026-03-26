@@ -4,6 +4,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
+import { CONFIG, getWrappedUnlockDate } from '../constants/config';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { EpisodeDetail } from '../screens/EpisodeDetail';
 import { MovieDetail } from '../screens/MovieDetail';
@@ -21,7 +22,7 @@ export const MainNavigation = () => {
   const [activeTab, setActiveTab] = useState<TabRoute>('Explore');
   const [selectedShow, setSelectedShow] = useState<SearchResult | null>(null);
   const [visibleDetail, setVisibleDetail] = useState<SearchResult | null>(null);
-  const [historyKey, setHistoryKey] = useState(0);
+  const [historyKey] = useState(0);
   const [showWrapped, setShowWrapped] = useState(false);
   const [wrappedLocked, setWrappedLocked] = useState(false);
   const [wrappedYear, setWrappedYear] = useState(new Date().getFullYear());
@@ -67,7 +68,7 @@ export const MainNavigation = () => {
     isAnimating.current = true;
     Animated.timing(detailAnim, {
       toValue: 0,
-      duration: 150,
+      duration: CONFIG.TIMING.DETAIL_CLOSE_DURATION,
       useNativeDriver: true,
     }).start(() => {
       setVisibleDetail(null);
@@ -82,7 +83,7 @@ export const MainNavigation = () => {
 
   const handleOpenWrapped = () => {
     const now = new Date();
-    const unlockThisYear = new Date(now.getFullYear(), 11, 15); // Dec 15 of current year
+    const unlockThisYear = getWrappedUnlockDate(now.getFullYear());
     if (now >= unlockThisYear) {
       // Past Dec 15 — show this year's Wrapped
       setWrappedYear(now.getFullYear());
@@ -231,7 +232,7 @@ export const MainNavigation = () => {
   // ── Compute countdown for locked screen ──
   const getCountdownText = () => {
     const now = new Date();
-    const unlockDate = new Date(now.getFullYear(), 11, 15);
+    const unlockDate = getWrappedUnlockDate(now.getFullYear());
     const diff = unlockDate.getTime() - now.getTime();
     const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
     if (days <= 0) return 'Available now!';
@@ -388,7 +389,7 @@ const styles = StyleSheet.create({
   },
   detailOverlay: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 50,
+    zIndex: CONFIG.LAYOUT.OVERLAY_Z_INDEX,
     backgroundColor: COLORS.background,
   },
   navBar: {
@@ -403,7 +404,7 @@ const styles = StyleSheet.create({
   navInner: {
     flexDirection: 'row',
     paddingTop: SPACING.s,
-    paddingBottom: Platform.OS === 'ios' ? 28 : 12,
+    paddingBottom: Platform.OS === 'ios' ? CONFIG.LAYOUT.TAB_BAR_HEIGHT_IOS : CONFIG.LAYOUT.TAB_BAR_HEIGHT_ANDROID,
     alignItems: 'center',
     justifyContent: 'space-around',
   },

@@ -1,10 +1,11 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ActivityIndicator, Alert, LayoutAnimation } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, LayoutAnimation, FlatList, RefreshControlProps } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, getRatingColor } from '../constants/theme';
 import { tmdbService } from '../services/tmdbService';
 import { StorageProvider } from '../services/StorageProvider';
 import { Episode, SeasonSummary, EpisodeDetailData } from '../types';
+import { FadeImage } from './FadeImage';
 
 interface SeasonBrowserProps {
     tvId: number;
@@ -15,6 +16,8 @@ interface SeasonBrowserProps {
     onOpenWatchedModal: (ep: Episode) => void;
     onEditWatchedEntry: (ep: Episode) => void;
     onWatchedIdsChange: (updater: (prev: Set<number>) => Set<number>) => void;
+    ListHeaderComponent?: React.ReactElement;
+    refreshControl?: React.ReactElement<RefreshControlProps>;
 }
 
 export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
@@ -26,6 +29,8 @@ export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
     onOpenWatchedModal,
     onEditWatchedEntry,
     onWatchedIdsChange,
+    ListHeaderComponent,
+    refreshControl,
 }) => {
     const [expandedSeason, setExpandedSeason] = useState<number | null>(null);
     const [seasonEpisodes, setSeasonEpisodes] = useState<Record<number, Episode[]>>({});
@@ -89,226 +94,242 @@ export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
         }
     }, [expandedEpisodeId, episodeDetails, tvId, onSelectEpisode]);
 
+    const listData = React.useMemo(() => {
+        const data: any[] = [];
+        data.push({ type: 'TITLE' });
+        displaySeasons.forEach(season => {
+            data.push({ type: 'SEASON', item: season });
+            if (expandedSeason === season.season_number && seasonEpisodes[season.season_number]) {
+                seasonEpisodes[season.season_number].forEach(ep => {
+                    data.push({ type: 'EPISODE', item: ep });
+                });
+            }
+        });
+        return data;
+    }, [displaySeasons, expandedSeason, seasonEpisodes]);
+
     return (
-        <View style={styles.section}>
-            <Text style={styles.sectionLabel}>SEASONS & EPISODES</Text>
+        <FlatList
+            data={listData}
+            extraData={[
+                loadingSeason,
+                loadingEpisodeDetail,
+                currentEpisode.id,
+                watchedEpisodeIds,
+                expandedEpisodeId,
+                episodeImdbRatings,
+                episodeDetails,
+            ]}
+            keyExtractor={(item) => item.type === 'TITLE' ? 'title' : item.type === 'SEASON' ? `s-${item.item.id}` : `e-${item.item.id}`}
+            ListHeaderComponent={ListHeaderComponent}
+            refreshControl={refreshControl}
+            contentContainerStyle={{ paddingBottom: 120 }}
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item }) => {
+                if (item.type === 'TITLE') {
+                    return <Text style={[styles.sectionLabel, { marginTop: SPACING.m, paddingHorizontal: SPACING.m }]}>SEASONS & EPISODES</Text>;
+                }
 
-            {displaySeasons.map((season) => {
-                const isExpanded = expandedSeason === season.season_number;
-                const episodes = seasonEpisodes[season.season_number];
-                const isLoading = loadingSeason === season.season_number;
+                if (item.type === 'SEASON') {
+                    const season = item.item;
+                    const isExpanded = expandedSeason === season.season_number;
+                    const isLoading = loadingSeason === season.season_number;
+                    return (
+                        <View style={[styles.seasonBlock, { marginHorizontal: SPACING.m }]}>
+                            <TouchableOpacity
+                                style={styles.seasonHeader}
+                                onPress={() => toggleSeason(season.season_number)}
+                                activeOpacity={0.7}
+                            >
+                                <View style={styles.seasonHeaderLeft}>
+                                    <Text style={styles.seasonTitle}>{season.name}</Text>
+                                    <Text style={styles.seasonMeta}>
+                                        {season.episode_count} episode{season.episode_count !== 1 ? 's' : ''}
+                                        {season.air_date ? ` · ${season.air_date.split('-')[0]}` : ''}
+                                    </Text>
+                                </View>
+                                <View style={styles.seasonChevron}>
+                                    {isLoading ? (
+                                        <ActivityIndicator size="small" color={COLORS.primary} />
+                                    ) : (
+                                        <Ionicons
+                                            name={isExpanded ? "chevron-up" : "chevron-down"}
+                                            size={18}
+                                            color={COLORS.text.muted}
+                                        />
+                                    )}
+                                </View>
+                            </TouchableOpacity>
+                        </View>
+                    );
+                }
 
-                return (
-                    <View key={season.id} style={styles.seasonBlock}>
-                        {/* Season header */}
-                        <TouchableOpacity
-                            style={styles.seasonHeader}
-                            onPress={() => toggleSeason(season.season_number)}
-                            activeOpacity={0.7}
-                        >
-                            <View style={styles.seasonHeaderLeft}>
-                                <Text style={styles.seasonTitle}>{season.name}</Text>
-                                <Text style={styles.seasonMeta}>
-                                    {season.episode_count} episode{season.episode_count !== 1 ? 's' : ''}
-                                    {season.air_date ? ` · ${season.air_date.split('-')[0]}` : ''}
-                                </Text>
-                            </View>
-                            <View style={styles.seasonChevron}>
-                                {isLoading ? (
-                                    <ActivityIndicator size="small" color={COLORS.primary} />
-                                ) : (
+                if (item.type === 'EPISODE') {
+                    const ep = item.item;
+                    const isSelected = currentEpisode.id === ep.id;
+                    const isEpExpanded = expandedEpisodeId === ep.id;
+                    const epDetail = episodeDetails[ep.id];
+                    const isLoadingDetail = loadingEpisodeDetail === ep.id;
+                    const imdbKey = `${ep.season_number}-${ep.episode_number}`;
+                    const epImdb = episodeImdbRatings[imdbKey];
+                    const ratingVal = parseFloat(epImdb?.rating || String(ep.vote_average));
+
+                    return (
+                        <View style={[styles.episodeRow, { marginHorizontal: SPACING.m }, isSelected && styles.episodeRowActive]}>
+                            <TouchableOpacity
+                                style={styles.epTouchArea}
+                                onPress={() => toggleEpisodeExpand(ep)}
+                                activeOpacity={0.7}
+                            >
+                                <View style={styles.epTopRow}>
+                                    <View style={styles.episodeNumberWrap}>
+                                        <Text style={[styles.episodeNumber, isSelected && styles.episodeNumberActive]}>
+                                            {ep.episode_number}
+                                        </Text>
+                                    </View>
+                                    {!isEpExpanded && (
+                                        ep.still_path ? (
+                                            <FadeImage
+                                                source={tmdbService.getImageSource(ep.still_path, 'w300')}
+                                                style={styles.episodeThumb}
+                                            />
+                                        ) : (
+                                            <View style={[styles.episodeThumb, styles.episodeThumbPlaceholder]}>
+                                                <Ionicons name="image-outline" size={16} color={COLORS.text.muted} />
+                                            </View>
+                                        )
+                                    )}
+                                    <View style={styles.episodeInfo}>
+                                        <Text style={[styles.episodeTitle, isSelected && styles.episodeTitleActive]} numberOfLines={isEpExpanded ? undefined : 2}>
+                                            {ep.name}
+                                        </Text>
+                                        {!isEpExpanded && (
+                                            <View style={styles.episodeMetaRow}>
+                                                {ep.air_date ? <Text style={styles.episodeMetaText}>{ep.air_date}</Text> : null}
+                                                {ep.runtime ? (
+                                                    <><View style={styles.epMetaDot} /><Text style={styles.episodeMetaText}>{ep.runtime}m</Text></>
+                                                ) : null}
+                                                {(epImdb || ep.vote_average > 0) && (
+                                                    <>
+                                                        <View style={styles.epMetaDot} />
+                                                        <View style={styles.episodeRatingRow}>
+                                                            <Ionicons name="star" size={10} color={getRatingColor(ratingVal)} />
+                                                            <Text style={[styles.episodeMetaText, { color: getRatingColor(ratingVal) }]}>
+                                                                {epImdb?.rating || ep.vote_average.toFixed(1)}
+                                                            </Text>
+                                                        </View>
+                                                    </>
+                                                )}
+                                            </View>
+                                        )}
+                                    </View>
                                     <Ionicons
-                                        name={isExpanded ? "chevron-up" : "chevron-down"}
-                                        size={18}
+                                        name={isEpExpanded ? "chevron-up" : "chevron-down"}
+                                        size={14}
                                         color={COLORS.text.muted}
+                                        style={{ marginLeft: 2 }}
                                     />
-                                )}
-                            </View>
-                        </TouchableOpacity>
-
-                        {/* Episodes list */}
-                        {isExpanded && episodes && (
-                            <View style={styles.episodesList}>
-                                {episodes.map((ep) => {
-                                    const isSelected = currentEpisode.id === ep.id;
-                                    const isEpExpanded = expandedEpisodeId === ep.id;
-                                    const epDetail = episodeDetails[ep.id];
-                                    const isLoadingDetail = loadingEpisodeDetail === ep.id;
-                                    const imdbKey = `${ep.season_number}-${ep.episode_number}`;
-                                    const epImdb = episodeImdbRatings[imdbKey];
-                                    const ratingVal = parseFloat(epImdb?.rating || String(ep.vote_average));
-
-                                    return (
-                                        <View key={ep.id}>
-                                            <View style={[styles.episodeRow, isSelected && styles.episodeRowActive]}>
-                                                <TouchableOpacity
-                                                    style={styles.epTouchArea}
-                                                    onPress={() => toggleEpisodeExpand(ep)}
-                                                    activeOpacity={0.7}
-                                                >
-                                                {/* Top row: number + thumb + title/meta */}
-                                                <View style={styles.epTopRow}>
-                                                    <View style={styles.episodeNumberWrap}>
-                                                        <Text style={[styles.episodeNumber, isSelected && styles.episodeNumberActive]}>
-                                                            {ep.episode_number}
-                                                        </Text>
-                                                    </View>
-                                                    {!isEpExpanded && (
-                                                        ep.still_path ? (
-                                                            <Image
-                                                                source={{ uri: tmdbService.getImageUrl(ep.still_path, 'w300') }}
-                                                                style={styles.episodeThumb}
-                                                            />
-                                                        ) : (
-                                                            <View style={[styles.episodeThumb, styles.episodeThumbPlaceholder]}>
-                                                                <Ionicons name="image-outline" size={16} color={COLORS.text.muted} />
-                                                            </View>
-                                                        )
-                                                    )}
-                                                    <View style={styles.episodeInfo}>
-                                                        <Text style={[styles.episodeTitle, isSelected && styles.episodeTitleActive]} numberOfLines={isEpExpanded ? undefined : 2}>
-                                                            {ep.name}
-                                                        </Text>
-                                                        {!isEpExpanded && (
-                                                            <View style={styles.episodeMetaRow}>
-                                                                {ep.air_date ? <Text style={styles.episodeMetaText}>{ep.air_date}</Text> : null}
-                                                                {ep.runtime ? (
-                                                                    <><View style={styles.epMetaDot} /><Text style={styles.episodeMetaText}>{ep.runtime}m</Text></>
-                                                                ) : null}
-                                                                {(epImdb || ep.vote_average > 0) && (
-                                                                    <>
-                                                                        <View style={styles.epMetaDot} />
-                                                                        <View style={styles.episodeRatingRow}>
-                                                                            <Ionicons name="star" size={10} color={getRatingColor(ratingVal)} />
-                                                                            <Text style={[styles.episodeMetaText, { color: getRatingColor(ratingVal) }]}>
-                                                                                {epImdb?.rating || ep.vote_average.toFixed(1)}
-                                                                            </Text>
-                                                                        </View>
-                                                                    </>
-                                                                )}
-                                                            </View>
-                                                        )}
-                                                    </View>
-                                                    <Ionicons
-                                                        name={isEpExpanded ? "chevron-up" : "chevron-down"}
-                                                        size={14}
-                                                        color={COLORS.text.muted}
-                                                        style={{ marginLeft: 2 }}
+                                </View>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[
+                                    styles.epWatchButton,
+                                    watchedEpisodeIds.has(ep.id) && styles.epWatchButtonDone,
+                                ]}
+                                onPress={() => {
+                                    if (watchedEpisodeIds.has(ep.id)) {
+                                        Alert.alert(
+                                            ep.name,
+                                            'What would you like to do?',
+                                            [
+                                                { text: 'Cancel', style: 'cancel' },
+                                                { text: 'Edit', onPress: () => onEditWatchedEntry(ep) },
+                                                {
+                                                    text: 'Remove',
+                                                    style: 'destructive',
+                                                    onPress: async () => {
+                                                        await StorageProvider.removeWatchedEpisode(ep.seriesId, ep.id);
+                                                        onWatchedIdsChange(prev => {
+                                                            const next = new Set(prev);
+                                                            next.delete(ep.id);
+                                                            return next;
+                                                        });
+                                                    },
+                                                },
+                                            ]
+                                        );
+                                    } else {
+                                        onOpenWatchedModal(ep);
+                                    }
+                                }}
+                                activeOpacity={0.7}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                                <Ionicons
+                                    name={watchedEpisodeIds.has(ep.id) ? "checkmark" : "add"}
+                                    size={14}
+                                    color={watchedEpisodeIds.has(ep.id) ? COLORS.teal : COLORS.text.muted}
+                                />
+                            </TouchableOpacity>
+                            {isEpExpanded && (
+                                <View style={styles.epExpandedWrap}>
+                                    {isLoadingDetail ? (
+                                        <View style={styles.epExpandedLoading}>
+                                            <ActivityIndicator size="small" color={COLORS.primary} />
+                                        </View>
+                                    ) : epDetail ? (
+                                        <>
+                                            {ep.still_path && (
+                                                <View style={styles.epExpandedImageWrap}>
+                                                    <FadeImage
+                                                        source={tmdbService.getImageSource(ep.still_path, 'w780')}
+                                                        style={styles.epExpandedImage}
                                                     />
                                                 </View>
-                                                </TouchableOpacity>
-                                                    <TouchableOpacity
-                                                        style={[
-                                                            styles.epWatchButton,
-                                                            watchedEpisodeIds.has(ep.id) && styles.epWatchButtonDone,
-                                                        ]}
-                                                        onPress={() => {
-                                                            if (watchedEpisodeIds.has(ep.id)) {
-                                                                Alert.alert(
-                                                                    ep.name,
-                                                                    'What would you like to do?',
-                                                                    [
-                                                                        { text: 'Cancel', style: 'cancel' },
-                                                                        {
-                                                                            text: 'Edit',
-                                                                            onPress: () => onEditWatchedEntry(ep),
-                                                                        },
-                                                                        {
-                                                                            text: 'Remove',
-                                                                            style: 'destructive',
-                                                                            onPress: async () => {
-                                                                                await StorageProvider.removeWatchedEpisode(ep.id);
-                                                                                onWatchedIdsChange(prev => {
-                                                                                    const next = new Set(prev);
-                                                                                    next.delete(ep.id);
-                                                                                    return next;
-                                                                                });
-                                                                            },
-                                                                        },
-                                                                    ]
-                                                                );
-                                                            } else {
-                                                                onOpenWatchedModal(ep);
-                                                            }
-                                                        }}
-                                                        activeOpacity={0.7}
-                                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                                    >
-                                                        <Ionicons
-                                                            name={watchedEpisodeIds.has(ep.id) ? "checkmark" : "add"}
-                                                            size={14}
-                                                            color={watchedEpisodeIds.has(ep.id) ? COLORS.teal : COLORS.text.muted}
-                                                        />
-                                                    </TouchableOpacity>
-                                            </View>
-
-                                            {/* Expanded episode detail */}
-                                            {isEpExpanded && (
-                                                <View style={styles.epExpandedWrap}>
-                                                    {isLoadingDetail ? (
-                                                        <View style={styles.epExpandedLoading}>
-                                                            <ActivityIndicator size="small" color={COLORS.primary} />
-                                                        </View>
-                                                    ) : epDetail ? (
-                                                        <>
-                                                            {/* Centered still image */}
-                                                            {ep.still_path && (
-                                                                <View style={styles.epExpandedImageWrap}>
-                                                                    <Image
-                                                                        source={{ uri: tmdbService.getImageUrl(ep.still_path, 'w780') }}
-                                                                        style={styles.epExpandedImage}
-                                                                    />
-                                                                </View>
-                                                            )}
-
-                                                            {/* Rating + Votes + Runtime bar */}
-                                                            <View style={styles.epExpandedStats}>
-                                                                {(epImdb || ep.vote_average > 0) && (
-                                                                    <View style={styles.epStatItem}>
-                                                                        <Ionicons name="star" size={14} color={getRatingColor(ratingVal)} />
-                                                                        <Text style={[styles.epStatValue, { color: getRatingColor(ratingVal) }]}>
-                                                                            {epImdb?.rating || ep.vote_average.toFixed(1)}
-                                                                        </Text>
-                                                                        {(epImdb?.votes || epDetail.vote_count) && (
-                                                                            <Text style={styles.epStatLabel}>
-                                                                                ({epImdb?.votes || epDetail.vote_count?.toLocaleString()})
-                                                                            </Text>
-                                                                        )}
-                                                                    </View>
-                                                                )}
-                                                                {ep.runtime ? (
-                                                                    <View style={styles.epStatItem}>
-                                                                        <Ionicons name="time-outline" size={13} color={COLORS.text.muted} />
-                                                                        <Text style={styles.epStatLabel}>{ep.runtime} min</Text>
-                                                                    </View>
-                                                                ) : null}
-                                                                {ep.air_date ? (
-                                                                    <View style={styles.epStatItem}>
-                                                                        <Ionicons name="calendar-outline" size={13} color={COLORS.text.muted} />
-                                                                        <Text style={styles.epStatLabel}>{ep.air_date}</Text>
-                                                                    </View>
-                                                                ) : null}
-                                                            </View>
-
-                                                            {/* Overview */}
-                                                            {ep.overview ? (
-                                                                <Text style={styles.epExpandedOverview}>{ep.overview}</Text>
-                                                            ) : null}
-                                                        </>
-                                                    ) : (
-                                                        <Text style={styles.epExpandedOverview}>No additional details available.</Text>
-                                                    )}
-                                                </View>
                                             )}
-                                        </View>
-                                    );
-                                })}
-                            </View>
-                        )}
-                    </View>
-                );
-            })}
-        </View>
+                                            <View style={styles.epExpandedStats}>
+                                                {(epImdb || ep.vote_average > 0) && (
+                                                    <View style={styles.epStatItem}>
+                                                        <Ionicons name="star" size={14} color={getRatingColor(ratingVal)} />
+                                                        <Text style={[styles.epStatValue, { color: getRatingColor(ratingVal) }]}>
+                                                            {epImdb?.rating || ep.vote_average.toFixed(1)}
+                                                        </Text>
+                                                        {(epImdb?.votes || epDetail.vote_count) && (
+                                                            <Text style={styles.epStatLabel}>
+                                                                ({epImdb?.votes || epDetail.vote_count?.toLocaleString()})
+                                                            </Text>
+                                                        )}
+                                                    </View>
+                                                )}
+                                                {ep.runtime ? (
+                                                    <View style={styles.epStatItem}>
+                                                        <Ionicons name="time-outline" size={13} color={COLORS.text.muted} />
+                                                        <Text style={styles.epStatLabel}>{ep.runtime} min</Text>
+                                                    </View>
+                                                ) : null}
+                                                {ep.air_date ? (
+                                                    <View style={styles.epStatItem}>
+                                                        <Ionicons name="calendar-outline" size={13} color={COLORS.text.muted} />
+                                                        <Text style={styles.epStatLabel}>{ep.air_date}</Text>
+                                                    </View>
+                                                ) : null}
+                                            </View>
+                                            {ep.overview ? (
+                                                <Text style={styles.epExpandedOverview}>{ep.overview}</Text>
+                                            ) : null}
+                                        </>
+                                    ) : (
+                                        <Text style={styles.epExpandedOverview}>No additional details available.</Text>
+                                    )}
+                                </View>
+                            )}
+                        </View>
+                    );
+                }
+
+                return null;
+            }}
+        />
     );
 };
 

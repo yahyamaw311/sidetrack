@@ -5,8 +5,8 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, LAYOUT } from '../constants/theme';
-import { StatsService, WrappedStats } from '../services/StatsService';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
+import type { WrappedStats } from '../services/StatsService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CARD_PADDING = SPACING.l;
@@ -43,6 +43,7 @@ export const WrappedScreen: React.FC<WrappedScreenProps> = ({ year, onClose }) =
     }, []);
 
     const loadStats = async () => {
+        const { StatsService } = await import('../services/StatsService');
         const data = await StatsService.computeWrapped(year);
         setStats(data);
         setLoading(false);

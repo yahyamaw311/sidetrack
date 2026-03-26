@@ -1,15 +1,15 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Platform, Animated, RefreshControl, Alert,
+  Platform, Animated, RefreshControl, Alert, useWindowDimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, LAYOUT } from '../constants/theme';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
 import { StorageProvider } from '../services/StorageProvider';
-import { StatsService } from '../services/StatsService';
+import { useDataEvent } from '../hooks/useDataEvent';
 
 interface ProfileScreenProps {
   onOpenWrapped: () => void;
@@ -28,17 +28,22 @@ const PERSONALITY_ICONS: Record<string, string> = {
 };
 
 // ── Quick Stat Pill ──
-const StatPill: React.FC<{ icon: string; label: string; value: string; color: string }> = ({ icon, label, value, color }) => (
-  <View style={statStyles.pill}>
-    <View style={[statStyles.pillIcon, { backgroundColor: color + '1A' }]}>
-      <Ionicons name={icon as any} size={16} color={color} />
+const StatPill: React.FC<{ icon: string; label: string; value: string; color: string }> = ({ icon, label, value, color }) => {
+  const { width } = useWindowDimensions();
+  const pillWidth = (width - SPACING.m * 2 - SPACING.s) / 2 - 1;
+
+  return (
+    <View style={[statStyles.pill, { width: pillWidth }]}>
+      <View style={[statStyles.pillIcon, { backgroundColor: color + '1A' }]}>
+        <Ionicons name={icon as any} size={16} color={color} />
+      </View>
+      <View style={statStyles.pillText}>
+        <Text style={statStyles.pillValue}>{value}</Text>
+        <Text style={statStyles.pillLabel}>{label}</Text>
+      </View>
     </View>
-    <View style={statStyles.pillText}>
-      <Text style={statStyles.pillValue}>{value}</Text>
-      <Text style={statStyles.pillLabel}>{label}</Text>
-    </View>
-  </View>
-);
+  );
+};
 
 // ── Wrapped CTA Card ──
 const WrappedCard: React.FC<{ onPress: () => void; year: number }> = ({ onPress, year }) => {
@@ -109,6 +114,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onOpenWrapped }) =
   const [loaded, setLoaded] = useState(false);
 
   const loadStats = useCallback(async () => {
+    const { StatsService } = await import('../services/StatsService');
     const stats = await StatsService.computeWrapped();
     setMovieCount(stats.totalMovies);
     setEpisodeCount(stats.totalEpisodes);
@@ -121,6 +127,11 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onOpenWrapped }) =
   }, []);
 
   useEffect(() => { loadStats(); }, [loadStats]);
+
+  useDataEvent('watchedMovies', loadStats);
+  useDataEvent('watchedEpisodes', loadStats);
+  useDataEvent('favorites', loadStats);
+  useDataEvent('watchlist', loadStats);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -144,7 +155,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onOpenWrapped }) =
           style: 'destructive',
           onPress: async () => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            const { DetailCache } = require('../services/DetailCache');
+            require('../services/DetailCache');
             const keys = (await (await import('@react-native-async-storage/async-storage')).default.getAllKeys()).filter(k => k.startsWith('@sidetrack_detail_cache_'));
             if (keys.length > 0) {
               await (await import('@react-native-async-storage/async-storage')).default.multiRemove(keys);
@@ -363,7 +374,6 @@ const statStyles = StyleSheet.create({
     paddingVertical: SPACING.s + 2,
     paddingHorizontal: SPACING.m,
     gap: SPACING.s,
-    width: (LAYOUT.window.width - SPACING.m * 2 - SPACING.s) / 2 - 1,
     borderWidth: 1,
     borderColor: COLORS.borderLight,
   },
