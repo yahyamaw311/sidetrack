@@ -211,7 +211,7 @@ export const OnboardingOverlay: React.FC<{ onComplete: () => void }> = ({ onComp
 
       {/* Skip */}
       {!isLast && (
-        <TouchableOpacity style={styles.skipBtn} onPress={dismiss} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.skipBtn} onPress={dismiss} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Skip tour">
           <Text style={styles.skipText}>Skip Tour</Text>
         </TouchableOpacity>
       )}
@@ -254,12 +254,12 @@ export const OnboardingOverlay: React.FC<{ onComplete: () => void }> = ({ onComp
           {/* Nav buttons */}
           <View style={styles.navRow}>
             {idx > 0 ? (
-              <TouchableOpacity onPress={back} style={styles.backBtn} activeOpacity={0.7}>
+              <TouchableOpacity onPress={back} style={styles.backBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Previous step">
                 <Ionicons name="chevron-back" size={18} color={COLORS.text.secondary} />
                 <Text style={styles.backText}>Back</Text>
               </TouchableOpacity>
             ) : <View />}
-            <TouchableOpacity onPress={next} style={[styles.nextBtn, { backgroundColor: s.iconColor }]} activeOpacity={0.85}>
+            <TouchableOpacity onPress={next} style={[styles.nextBtn, { backgroundColor: s.iconColor }]} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel={isLast ? 'Get Started' : isFirst ? "Let's Go" : 'Next step'}>
               <Text style={styles.nextText}>{isLast ? 'Get Started' : isFirst ? "Let's Go" : 'Next'}</Text>
               <Ionicons name={isLast ? 'checkmark' : 'arrow-forward'} size={16} color={COLORS.text.inverse} style={{ marginLeft: 4 }} />
             </TouchableOpacity>

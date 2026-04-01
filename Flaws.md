@@ -1,16 +1,4 @@
-# 🔥 SIDETRACK — Comprehensive Flaw Audit
-
-## 1. UX Friction & "Death by 1,000 Clicks"
-
-| **No accessibility support whatsoever** — The entire app lacks `accessibilityLabel`, `accessibilityHint`, and `accessibilityRole` props on all interactive elements. Completely unusable for screen reader users. | All files | 🔴 Critical |
-
 ## 5. Security & Compliance (Deep Tier)
-
-### Privacy Gaps
-
-| Issue | Location | Severity |
-|-------|----------|----------|
-| **`console.error` logs full error objects** — Every API failure logs the full error (including request URLs with API keys) to the console. In production, these can leak into crash reporting tools. | `tmdbService.ts` (12+ instances) | 🟡 Medium |
 
 
 ### Compliance Debt
@@ -32,15 +20,6 @@
 |-------|----------|----------|
 | **`HistoryScreen` computes `showGroups` and `unifiedItems` in `useMemo` but with broad deps** — Any change to `movies`, `showGroups`, or `query` re-computes the entire unified list. `showGroups` iterates all episodes to group by show on every re-render where `episodes` changes. | `HistoryScreen.tsx:301-342` | 🟡 Medium |
 | **Season episodes IMDb ratings fetched in parallel without throttling** — `fetchEpisodeImdbRatings` fires `Promise.all` for every episode in a season simultaneously. A 24-episode season generates 24 near-simultaneous API round trips (TMDB external IDs + IMDb GraphQL = 48 requests). Only the IMDb call has a concurrency limiter of 3. | `SeasonBrowser.tsx:58-70` | 🟠 High |
-
-### Code Quality
-
-| Issue | Location | Severity |
-|-------|----------|----------|
-
-
-
----
 
 ## 7. Severity Matrix & Action Plan
 

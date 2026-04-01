@@ -140,6 +140,10 @@ export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
                                 style={styles.seasonHeader}
                                 onPress={() => toggleSeason(season.season_number)}
                                 activeOpacity={0.7}
+                                accessibilityRole="button"
+                                accessibilityLabel={`${season.name}, ${season.episode_count} episode${season.episode_count !== 1 ? 's' : ''}`}
+                                accessibilityHint={isExpanded ? 'Double tap to collapse' : 'Double tap to expand'}
+                                accessibilityState={{ expanded: isExpanded }}
                             >
                                 <View style={styles.seasonHeaderLeft}>
                                     <Text style={styles.seasonTitle}>{season.name}</Text>
@@ -180,6 +184,9 @@ export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
                                 style={styles.epTouchArea}
                                 onPress={() => toggleEpisodeExpand(ep)}
                                 activeOpacity={0.7}
+                                accessibilityRole="button"
+                                accessibilityLabel={`Episode ${ep.episode_number}, ${ep.name}`}
+                                accessibilityHint="Double tap to expand or collapse details"
                             >
                                 <View style={styles.epTopRow}>
                                     <View style={styles.episodeNumberWrap}>
@@ -264,6 +271,8 @@ export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
                                 }}
                                 activeOpacity={0.7}
                                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                accessibilityRole="button"
+                                accessibilityLabel={watchedEpisodeIds.has(ep.id) ? `Episode ${ep.episode_number} watched, double tap for options` : `Mark episode ${ep.episode_number} as watched`}
                             >
                                 <Ionicons
                                     name={watchedEpisodeIds.has(ep.id) ? "checkmark" : "add"}

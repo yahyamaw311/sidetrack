@@ -63,13 +63,13 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
         <View style={styles.centered}>
           <Ionicons name="cloud-offline-outline" size={40} color={COLORS.text.muted} />
           <Text style={styles.loadingText}>Failed to load movie</Text>
-          <TouchableOpacity onPress={loadData} style={styles.retryButton}>
+          <TouchableOpacity onPress={loadData} style={styles.retryButton} accessibilityRole="button" accessibilityLabel="Retry loading movie">
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
         </View>
         {onBack && (
           <SafeAreaView style={styles.backSafe}>
-            <TouchableOpacity onPress={onBack} style={styles.backButton}>
+            <TouchableOpacity onPress={onBack} style={styles.backButton} accessibilityRole="button" accessibilityLabel="Go back">
               <Ionicons name="chevron-back" size={20} color={COLORS.text.primary} />
             </TouchableOpacity>
           </SafeAreaView>
@@ -147,6 +147,8 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
             style={[styles.logButton, isWatched && styles.logButtonWatched]}
             onPress={openLogModal}
             activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={isWatched ? 'Watched, double tap to edit' : 'Log as Watched'}
           >
             <Ionicons
               name={isWatched ? "checkmark-circle" : "add-circle-outline"}
@@ -163,6 +165,8 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
             <TouchableOpacity
               style={[styles.actionButton, isInWatchlist && styles.actionButtonActive]}
               onPress={toggleWatchlist}
+              accessibilityRole="button"
+              accessibilityLabel={isInWatchlist ? 'Remove from Watchlist' : 'Add to Watchlist'}
             >
               <Ionicons
                 name={isInWatchlist ? "bookmark" : "bookmark-outline"}
@@ -177,6 +181,8 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
             <TouchableOpacity
               style={[styles.actionButton, isFavorite && styles.actionButtonActive]}
               onPress={toggleFavorite}
+              accessibilityRole="button"
+              accessibilityLabel={isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
             >
               <Ionicons
                 name={isFavorite ? "star" : "star-outline"}
@@ -221,6 +227,8 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
                   style={styles.trailerContainer}
                   onPress={() => setTrailerPlaying(true)}
                   activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Play trailer"
                 >
                   <FadeImage
                     source={{ uri: `https://img.youtube.com/vi/${trailerKey}/hqdefault.jpg` }}

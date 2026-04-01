@@ -5,6 +5,30 @@ import { TMDBResponse, SearchResult, TVShowDetail, SeasonDetail, MovieDetail, Ep
 import { notifyErrorGlobal } from '../contexts/ErrorNotifier';
 import { CONFIG } from '../constants/config';
 
+/**
+ * Extract a loggable summary from an error without leaking sensitive data.
+ * Axios errors include full request config (URLs with API keys, headers with
+ * Bearer tokens) which can end up in crash-reporting tools in production.
+ */
+function sanitizeError(error: unknown): string {
+  if (error instanceof Error) {
+    const axiosErr = error as any;
+    if (axiosErr.isAxiosError) {
+      const status: number | undefined = axiosErr.response?.status;
+      const statusText: string | undefined = axiosErr.response?.statusText;
+      const code: string | undefined = axiosErr.code; // e.g. ECONNABORTED
+      return [
+        axiosErr.message,
+        status && `status=${status}`,
+        statusText && `statusText=${statusText}`,
+        code && `code=${code}`,
+      ].filter(Boolean).join(' | ');
+    }
+    return error.message;
+  }
+  return String(error);
+}
+
 const TMDB_API_KEY = Constants.expoConfig?.extra?.tmdbApiKey
   || process.env.EXPO_PUBLIC_TMDB_API_KEY
   || '';
@@ -159,7 +183,7 @@ export const tmdbService = {
       });
       return response.data.results;
     } catch (error) {
-      console.error('TMDB Search Error:', error);
+      console.error('TMDB Search Error:', sanitizeError(error));
       notifyErrorGlobal('Search failed — check your connection', 'api');
       return [];
     }
@@ -173,7 +197,7 @@ export const tmdbService = {
       const response = await tmdbClient.get<TMDBResponse<SearchResult>>('/trending/tv/week');
       return response.data.results;
     } catch (error) {
-      console.error('TMDB Trending Error:', error);
+      console.error('TMDB Trending Error:', sanitizeError(error));
       notifyErrorGlobal('Could not load trending shows', 'api');
       return [];
     }
@@ -187,7 +211,7 @@ export const tmdbService = {
       const response = await tmdbClient.get<TMDBResponse<SearchResult>>('/trending/movie/week');
       return response.data.results;
     } catch (error) {
-      console.error('TMDB Trending Movies Error:', error);
+      console.error('TMDB Trending Movies Error:', sanitizeError(error));
       notifyErrorGlobal('Could not load trending movies', 'api');
       return [];
     }
@@ -206,7 +230,7 @@ export const tmdbService = {
       setCache(cacheKey, results);
       return results;
     } catch (error) {
-      console.error('TMDB Top Rated Error:', error);
+      console.error('TMDB Top Rated Error:', sanitizeError(error));
       return [];
     }
   },
@@ -226,7 +250,7 @@ export const tmdbService = {
       setCache(cacheKey, results);
       return results;
     } catch (error) {
-      console.error('TMDB Discover Genre Error:', error);
+      console.error('TMDB Discover Genre Error:', sanitizeError(error));
       return [];
     }
   },
@@ -247,7 +271,7 @@ export const tmdbService = {
       setCache(cacheKey, result);
       return result;
     } catch (error) {
-      console.error(`TMDB TV Detail Error (${tvId}):`, error);
+      console.error(`TMDB TV Detail Error (${tvId}):`, sanitizeError(error));
       notifyErrorGlobal('Could not load show details', 'api');
       return null;
     }
@@ -265,7 +289,7 @@ export const tmdbService = {
       setCache(cacheKey, response.data);
       return response.data;
     } catch (error) {
-      console.error(`TMDB Movie Detail Error (${movieId}):`, error);
+      console.error(`TMDB Movie Detail Error (${movieId}):`, sanitizeError(error));
       notifyErrorGlobal('Could not load movie details', 'api');
       return null;
     }
@@ -283,7 +307,7 @@ export const tmdbService = {
       setCache(cacheKey, response.data);
       return response.data;
     } catch (error) {
-      console.error(`TMDB Season Detail Error (${tvId} S${seasonNumber}):`, error);
+      console.error(`TMDB Season Detail Error (${tvId} S${seasonNumber}):`, sanitizeError(error));
       return null;
     }
   },
@@ -303,7 +327,7 @@ export const tmdbService = {
       setCache(cacheKey, response.data);
       return response.data;
     } catch (error) {
-      console.error(`TMDB Episode Detail Error (${tvId} S${seasonNumber}E${episodeNumber}):`, error);
+      console.error(`TMDB Episode Detail Error (${tvId} S${seasonNumber}E${episodeNumber}):`, sanitizeError(error));
       return null;
     }
   },
@@ -347,7 +371,7 @@ export const tmdbService = {
       }
       return null;
     } catch (error) {
-      console.error('IMDb GraphQL Error:', error);
+      console.error('IMDb GraphQL Error:', sanitizeError(error));
       return null;
     }
   },
@@ -362,7 +386,7 @@ export const tmdbService = {
       );
       return response.data.imdb_id || null;
     } catch (error) {
-      console.error(`TMDB Episode External IDs Error:`, error);
+      console.error(`TMDB Episode External IDs Error:`, sanitizeError(error));
       return null;
     }
   },
@@ -377,7 +401,7 @@ export const tmdbService = {
         if (!episodeImdbId) return null;
         return await tmdbService.getIMDbRating(episodeImdbId);
       } catch (error) {
-        console.error('IMDb Episode Rating Error:', error);
+        console.error('IMDb Episode Rating Error:', sanitizeError(error));
         return null;
       }
     });
@@ -401,7 +425,7 @@ export const tmdbService = {
       if (key) setCache(cacheKey, key);
       return key;
     } catch (error) {
-      console.error('TMDB Movie Trailer Error:', error);
+      console.error('TMDB Movie Trailer Error:', sanitizeError(error));
       return null;
     }
   },
@@ -424,7 +448,7 @@ export const tmdbService = {
       if (key) setCache(cacheKey, key);
       return key;
     } catch (error) {
-      console.error('TMDB TV Trailer Error:', error);
+      console.error('TMDB TV Trailer Error:', sanitizeError(error));
       return null;
     }
   },

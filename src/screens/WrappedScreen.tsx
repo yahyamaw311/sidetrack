@@ -72,7 +72,7 @@ export const WrappedScreen: React.FC<WrappedScreenProps> = ({ year, onClose }) =
                 <Ionicons name="film-outline" size={64} color={COLORS.text.muted} />
                 <Text style={styles.emptyTitle}>Nothing to Wrap for {year}!</Text>
                 <Text style={styles.emptySubtitle}>Log some movies and episodes, then come back.</Text>
-                <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+                <TouchableOpacity style={styles.closeBtn} onPress={onClose} accessibilityRole="button" accessibilityLabel="Go back">
                     <Text style={styles.closeBtnText}>Go Back</Text>
                 </TouchableOpacity>
             </View>
@@ -113,7 +113,7 @@ export const WrappedScreen: React.FC<WrappedScreenProps> = ({ year, onClose }) =
                 </ScrollView>
 
                 {/* Close button */}
-                <TouchableOpacity style={styles.closeButton} onPress={onClose} activeOpacity={0.7}>
+                <TouchableOpacity style={styles.closeButton} onPress={onClose} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Close Wrapped">
                     <Ionicons name="close" size={24} color={COLORS.text.primary} />
                 </TouchableOpacity>
 

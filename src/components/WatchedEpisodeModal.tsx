@@ -115,7 +115,7 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
                 <View style={styles.container}>
                     {/* Header */}
                     <View style={styles.header}>
-                        <TouchableOpacity onPress={handleClose} style={styles.headerBtn}>
+                        <TouchableOpacity onPress={handleClose} style={styles.headerBtn} accessibilityRole="button" accessibilityLabel="Close">
                             <Ionicons name="close" size={22} color={COLORS.text.primary} />
                         </TouchableOpacity>
                         <Text style={styles.headerTitle}>{initialData ? 'Edit Entry' : 'I Watched'}</Text>
@@ -123,6 +123,9 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
                             onPress={handleConfirm}
                             style={styles.headerBtn}
                             disabled={rating === 0}
+                            accessibilityRole="button"
+                            accessibilityLabel="Save"
+                            accessibilityState={{ disabled: rating === 0 }}
                         >
                             <Ionicons name="checkmark" size={22} color={rating === 0 ? COLORS.text.muted : COLORS.text.primary} />
                         </TouchableOpacity>
@@ -152,7 +155,7 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
                         )}
 
                         {/* Date */}
-                        <TouchableOpacity style={styles.row} onPress={() => setDatePickerVisible(true)} activeOpacity={0.7}>
+                        <TouchableOpacity style={styles.row} onPress={() => setDatePickerVisible(true)} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={`Watched date: ${formatDate(watchedDate)}`} accessibilityHint="Double tap to change date">
                             <Text style={styles.rowLabel}>Date</Text>
                             <View style={styles.dateRight}>
                                 <Ionicons name="calendar-outline" size={16} color={COLORS.text.secondary} />
@@ -179,6 +182,9 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
                                 style={styles.likeWrap}
                                 onPress={() => setLiked(!liked)}
                                 activeOpacity={0.7}
+                                accessibilityRole="button"
+                                accessibilityLabel={liked ? 'Unlike' : 'Like'}
+                                accessibilityState={{ selected: liked }}
                             >
                                 <Ionicons
                                     name={liked ? "heart" : "heart-outline"}
@@ -200,6 +206,7 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
                             multiline
                             textAlignVertical="top"
                             maxLength={2000}
+                            accessibilityLabel="Add review"
                         />
                         <View style={styles.separator} />
 
@@ -211,6 +218,7 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
                             value={tags}
                             onChangeText={setTags}
                             maxLength={100}
+                            accessibilityLabel="Add tags, comma separated"
                         />
                         <View style={styles.separator} />
 
@@ -220,6 +228,9 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
                                 style={styles.toggleItem}
                                 onPress={() => setRewatch(!rewatch)}
                                 activeOpacity={0.7}
+                                accessibilityRole="switch"
+                                accessibilityLabel="I've seen this before"
+                                accessibilityState={{ checked: rewatch }}
                             >
                                 <View style={styles.toggleIconWrap}>
                                     {rewatch && (
@@ -238,6 +249,9 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
                                 style={styles.toggleItem}
                                 onPress={() => setNoSpoilers(!noSpoilers)}
                                 activeOpacity={0.7}
+                                accessibilityRole="switch"
+                                accessibilityLabel="No spoilers"
+                                accessibilityState={{ checked: noSpoilers }}
                             >
                                 <View style={styles.toggleIconWrap}>
                                     {noSpoilers && (

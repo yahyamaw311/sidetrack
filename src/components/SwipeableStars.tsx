@@ -80,6 +80,10 @@ export const SwipeableStars: React.FC<SwipeableStarsProps> = ({ value, onChange 
             ref={containerRef}
             style={{ flexDirection: 'row', gap: STAR_GAP }}
             {...panResponder.panHandlers}
+            accessibilityRole="adjustable"
+            accessibilityLabel={`Star rating, ${value} out of 5`}
+            accessibilityHint="Swipe or tap to set rating"
+            accessibilityValue={{ min: 0, max: 5, now: value }}
         >
             {[0, 1, 2, 3, 4].map(renderStar)}
         </View>

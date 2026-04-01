@@ -112,13 +112,13 @@ export const DatePickerModal: React.FC<DatePickerProps> = ({ visible, date, onCo
         <View style={dpStyles.container}>
           {/* Month/Year header */}
           <View style={dpStyles.header}>
-            <TouchableOpacity onPress={goToPrevMonth} style={dpStyles.navBtn}>
+            <TouchableOpacity onPress={goToPrevMonth} style={dpStyles.navBtn} accessibilityRole="button" accessibilityLabel="Previous month">
               <Ionicons name="chevron-back" size={20} color={COLORS.text.primary} />
             </TouchableOpacity>
             <Text style={dpStyles.monthYear}>
               {MONTHS[viewMonth]} {viewYear}
             </Text>
-            <TouchableOpacity onPress={goToNextMonth} style={dpStyles.navBtn} disabled={!canGoNext()}>
+            <TouchableOpacity onPress={goToNextMonth} style={dpStyles.navBtn} disabled={!canGoNext()} accessibilityRole="button" accessibilityLabel="Next month" accessibilityState={{ disabled: !canGoNext() }}>
               <Ionicons name="chevron-forward" size={20} color={canGoNext() ? COLORS.text.primary : COLORS.text.muted} />
             </TouchableOpacity>
           </View>
@@ -146,6 +146,9 @@ export const DatePickerModal: React.FC<DatePickerProps> = ({ visible, date, onCo
                     onPress={() => selectDay(day)}
                     disabled={isFuture(day)}
                     activeOpacity={0.6}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${MONTHS[viewMonth]} ${day}, ${viewYear}${isToday(day) ? ', today' : ''}`}
+                    accessibilityState={{ selected: isSelected(day), disabled: isFuture(day) }}
                   >
                     <Text
                       style={[
@@ -165,14 +168,14 @@ export const DatePickerModal: React.FC<DatePickerProps> = ({ visible, date, onCo
 
           {/* Footer */}
           <View style={dpStyles.footer}>
-            <TouchableOpacity onPress={setToday} style={dpStyles.todayBtn}>
+            <TouchableOpacity onPress={setToday} style={dpStyles.todayBtn} accessibilityRole="button" accessibilityLabel="Select today">
               <Text style={dpStyles.todayBtnText}>Today</Text>
             </TouchableOpacity>
             <View style={dpStyles.footerActions}>
-              <TouchableOpacity onPress={onCancel} style={dpStyles.cancelBtn}>
+              <TouchableOpacity onPress={onCancel} style={dpStyles.cancelBtn} accessibilityRole="button" accessibilityLabel="Cancel">
                 <Text style={dpStyles.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => onConfirm(selectedDate)} style={dpStyles.confirmBtn}>
+              <TouchableOpacity onPress={() => onConfirm(selectedDate)} style={dpStyles.confirmBtn} accessibilityRole="button" accessibilityLabel="Confirm date selection">
                 <Text style={dpStyles.confirmBtnText}>Done</Text>
               </TouchableOpacity>
             </View>

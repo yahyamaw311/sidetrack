@@ -33,7 +33,7 @@ const StatPill: React.FC<{ icon: string; label: string; value: string; color: st
   const pillWidth = (width - SPACING.m * 2 - SPACING.s) / 2 - 1;
 
   return (
-    <View style={[statStyles.pill, { width: pillWidth }]}>
+    <View style={[statStyles.pill, { width: pillWidth }]} accessibilityRole="text" accessibilityLabel={`${value} ${label}`}>
       <View style={[statStyles.pillIcon, { backgroundColor: color + '1A' }]}>
         <Ionicons name={icon as any} size={16} color={color} />
       </View>
@@ -61,7 +61,7 @@ const WrappedCard: React.FC<{ onPress: () => void; year: number }> = ({ onPress,
   const shimmerOpacity = shimmer.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] });
 
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={wrappedCardStyles.wrap}>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={wrappedCardStyles.wrap} accessibilityRole="button" accessibilityLabel={`View Sidetrack Wrapped for ${year}`} accessibilityHint="Double tap to see your year in review">
       <LinearGradient
         colors={['#0f0c29', '#302b63', '#24243e']}
         start={{ x: 0, y: 0 }}
@@ -89,7 +89,7 @@ const WrappedCard: React.FC<{ onPress: () => void; year: number }> = ({ onPress,
 const MenuRow: React.FC<{ icon: string; label: string; sublabel?: string; color?: string; onPress: () => void; destructive?: boolean }> = ({
   icon, label, sublabel, color = COLORS.text.secondary, onPress, destructive,
 }) => (
-  <TouchableOpacity style={menuStyles.row} onPress={onPress} activeOpacity={0.7}>
+  <TouchableOpacity style={menuStyles.row} onPress={onPress} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={sublabel ? `${label}, ${sublabel}` : label}>
     <View style={[menuStyles.rowIcon, { backgroundColor: (destructive ? COLORS.coral : color) + '1A' }]}>
       <Ionicons name={icon as any} size={17} color={destructive ? COLORS.coral : color} />
     </View>

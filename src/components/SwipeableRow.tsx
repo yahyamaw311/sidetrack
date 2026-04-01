@@ -93,6 +93,9 @@ export const SwipeableRow: React.FC<SwipeableRowProps> = ({ children, onDelete, 
                     style={styles.deleteButton}
                     onPress={handleConfirmDelete}
                     activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel="Delete"
+                    accessibilityHint="Double tap to delete this item"
                 >
                     <Ionicons name="trash" size={18} color="#fff" />
                     <Text style={styles.deleteText}>Delete</Text>
@@ -107,6 +110,7 @@ export const SwipeableRow: React.FC<SwipeableRowProps> = ({ children, onDelete, 
                     const h = e.nativeEvent.layout.height;
                     if (h > 0 && measuredHeight !== h) setMeasuredHeight(h);
                 } : undefined}
+                accessibilityHint="Swipe left to reveal delete button"
             >
                 {children}
             </Animated.View>

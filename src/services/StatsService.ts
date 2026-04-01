@@ -146,6 +146,9 @@ const getFunTimeEquivalent = (hours: number): string => {
     return `${days} days (${months} months!) — you could've driven around the world ${Math.round(hours / 480)} times`;
 };
 
+// Exported for unit testing
+export { computeStreak, getDecade, getFunTimeEquivalent, determinePersonality };
+
 // ── Main computation ──
 
 export const StatsService = {

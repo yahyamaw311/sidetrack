@@ -106,6 +106,9 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
             style={[styles.card, isDeleting && { opacity: 0.6 }]}
             activeOpacity={0.7}
             disabled={isDeleting}
+            accessibilityRole="button"
+            accessibilityLabel={`${item.name}, ${(item.itemType || 'tv') === 'movie' ? 'Movie' : 'Series'}`}
+            accessibilityHint="Double tap to view details, swipe left to delete"
           >
             <FadeImage
               source={tmdbService.getImageSource(item.posterPath)}
@@ -149,7 +152,7 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
         Add movies and shows you want to watch next
       </Text>
       {onNavigateToExplore && (
-        <TouchableOpacity style={styles.ctaButton} onPress={onNavigateToExplore} activeOpacity={0.8}>
+        <TouchableOpacity style={styles.ctaButton} onPress={onNavigateToExplore} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Browse Explore" accessibilityHint="Double tap to navigate to Explore">
           <Ionicons name="compass-outline" size={18} color={COLORS.background} />
           <Text style={styles.ctaText}>Browse Explore</Text>
         </TouchableOpacity>
@@ -180,6 +183,9 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
                 style={[styles.filterTab, filter === f && styles.filterTabActive]}
                 onPress={() => setFilter(f)}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Filter by ${f === 'all' ? 'All' : f === 'tv' ? 'Shows' : 'Movies'}`}
+                accessibilityState={{ selected: filter === f }}
               >
                 <Text style={[styles.filterTabText, filter === f && styles.filterTabTextActive]}>
                   {f === 'all' ? 'All' : f === 'tv' ? 'Shows' : 'Movies'}

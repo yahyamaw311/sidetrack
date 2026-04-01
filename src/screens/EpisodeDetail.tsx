@@ -90,7 +90,7 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
         <View style={styles.centered}>
           <Ionicons name="cloud-offline-outline" size={40} color={COLORS.text.muted} />
           <Text style={styles.loadingText}>Failed to load show</Text>
-          <TouchableOpacity onPress={() => loadData()} style={styles.retryButton}>
+          <TouchableOpacity onPress={() => loadData()} style={styles.retryButton} accessibilityRole="button" accessibilityLabel="Retry loading show">
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -172,6 +172,8 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
                 <TouchableOpacity
                   style={[styles.actionButton, isInWatchlist && styles.actionButtonActive]}
                   onPress={toggleWatchlist}
+                  accessibilityRole="button"
+                  accessibilityLabel={isInWatchlist ? 'Remove from Watchlist' : 'Add to Watchlist'}
                 >
                   <Ionicons
                     name={isInWatchlist ? "bookmark" : "bookmark-outline"}
@@ -186,6 +188,8 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
                 <TouchableOpacity
                   style={[styles.actionButton, isFavorite && styles.actionButtonActive]}
                   onPress={toggleFavorite}
+                  accessibilityRole="button"
+                  accessibilityLabel={isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
                 >
                   <Ionicons
                     name={isFavorite ? "star" : "star-outline"}
@@ -234,7 +238,7 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
                         stiffness: 140,
                         useNativeDriver: false,
                       }).start();
-                    }} activeOpacity={0.7}>
+                    }} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={trailerExpanded ? 'Close trailer' : 'Play trailer'}>
                       <Ionicons name="logo-youtube" size={24} color="#FF0000" />
                       <Text style={styles.showInfoLabel}>{trailerExpanded ? 'Close' : 'Trailer'}</Text>
                     </TouchableOpacity>
@@ -298,7 +302,7 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
       {/* Fixed back button – stays in place during scroll */}
       {onBack && (
         <SafeAreaView style={styles.backSafe} pointerEvents="box-none">
-          <TouchableOpacity onPress={onBack} style={styles.backButton}>
+          <TouchableOpacity onPress={onBack} style={styles.backButton} accessibilityRole="button" accessibilityLabel="Go back">
             <Ionicons name="chevron-back" size={24} color={COLORS.text.primary} />
           </TouchableOpacity>
         </SafeAreaView>

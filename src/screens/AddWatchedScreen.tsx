@@ -127,6 +127,9 @@ export const AddWatchedScreen: React.FC<AddWatchedScreenProps> = ({ onClose }) =
       style={styles.resultCard}
       onPress={() => handleSelectMovie(item)}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.title}, ${item.release_date?.split('-')[0] || 'N/A'}, rated ${item.vote_average.toFixed(1)}`}
+      accessibilityHint="Double tap to log this movie"
     >
       <FadeImage
         source={tmdbService.getImageSource(item.poster_path, 'w92')}
@@ -152,7 +155,7 @@ export const AddWatchedScreen: React.FC<AddWatchedScreenProps> = ({ onClose }) =
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+        <TouchableOpacity onPress={onClose} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Close">
           <Ionicons name="chevron-down" size={22} color={COLORS.text.primary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Log Movie</Text>
@@ -169,9 +172,11 @@ export const AddWatchedScreen: React.FC<AddWatchedScreenProps> = ({ onClose }) =
           placeholderTextColor={COLORS.text.muted}
           value={query}
           onChangeText={handleSearch}
+          accessibilityLabel="Search for a movie"
+          accessibilityHint="Type to search for movies to log"
         />
         {query.length > 0 && (
-          <TouchableOpacity onPress={() => { setQuery(''); setResults([]); }}>
+          <TouchableOpacity onPress={() => { setQuery(''); setResults([]); }} accessibilityRole="button" accessibilityLabel="Clear search">
             <Ionicons name="close-circle" size={18} color={COLORS.text.muted} />
           </TouchableOpacity>
         )}
@@ -236,6 +241,9 @@ export const AddWatchedScreen: React.FC<AddWatchedScreenProps> = ({ onClose }) =
                 style={styles.dateRow}
                 onPress={() => setDatePickerVisible(true)}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`Watched date: ${watchedDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}`}
+                accessibilityHint="Double tap to change date"
               >
                 <Ionicons name="calendar-outline" size={18} color={COLORS.text.secondary} />
                 <Text style={styles.dateText}>
@@ -263,6 +271,9 @@ export const AddWatchedScreen: React.FC<AddWatchedScreenProps> = ({ onClose }) =
                     }
                   ]}
                   onPress={() => setSelectedRating(num)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Rate ${num} out of 10`}
+                  accessibilityState={{ selected: selectedRating === num }}
                 >
                   <Text style={[
                     styles.ratingOptionText,
@@ -276,12 +287,16 @@ export const AddWatchedScreen: React.FC<AddWatchedScreenProps> = ({ onClose }) =
               <TouchableOpacity
                 style={styles.cancelButton}
                 onPress={() => setRatingModalVisible(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
               >
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.confirmButton}
                 onPress={handleConfirmWatched}
+                accessibilityRole="button"
+                accessibilityLabel={isEditMode ? 'Update rating' : 'Log Movie'}
               >
                 <Text style={styles.confirmButtonText}>{isEditMode ? 'Update' : 'Log Movie'}</Text>
               </TouchableOpacity>

@@ -342,6 +342,8 @@ export const MainNavigation = () => {
               style={wrappedOverlayStyles.closeButton}
               onPress={() => setShowWrapped(false)}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Close Wrapped"
             >
               <Ionicons name="close" size={24} color={COLORS.text.primary} />
             </TouchableOpacity>
@@ -369,7 +371,7 @@ export const MainNavigation = () => {
 };
 
 const TabButton = ({ icon, activeIcon, label, isActive, onPress }: { icon: any, activeIcon: any, label: string, isActive: boolean, onPress: () => void }) => (
-  <TouchableOpacity onPress={onPress} style={styles.tabButton} activeOpacity={0.7}>
+  <TouchableOpacity onPress={onPress} style={styles.tabButton} activeOpacity={0.7} accessibilityRole="tab" accessibilityLabel={label} accessibilityState={{ selected: isActive }}>
     {isActive && <View style={styles.activeIndicatorLine} />}
     <Ionicons name={isActive ? activeIcon : icon} size={21} color={isActive ? COLORS.primary : COLORS.text.muted} />
     <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>{label}</Text>

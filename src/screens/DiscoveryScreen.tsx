@@ -101,6 +101,9 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
       onPress={() => onSelectShow(item)}
       activeOpacity={0.8}
       style={[styles.spotlightCard, { width: spotlightWidth, height: spotlightWidth * CONFIG.LAYOUT.TRAILER_ASPECT_RATIO }]}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.name || item.title}, rated ${(item.vote_average || 0).toFixed(1)}`}
+      accessibilityHint="Double tap to view details"
     >
       <Image
         source={tmdbService.getImageSource(item.backdrop_path || item.poster_path, 'w780')}
@@ -129,6 +132,9 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
       onPress={() => onSelectShow(item)}
       activeOpacity={0.8}
       style={[styles.posterCard, { width: posterWidth }]}
+      accessibilityRole="button"
+      accessibilityLabel={item.name || item.title}
+      accessibilityHint="Double tap to view details"
     >
       <FadeImage
         source={tmdbService.getImageSource(item.poster_path)}
@@ -146,6 +152,9 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
       onPress={() => handleSelectFromSearch(item)}
       activeOpacity={0.7}
       style={styles.searchResultCard}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.name || item.title}, ${(item.release_date || item.first_air_date)?.split('-')[0] || ''}, ${item.media_type === 'movie' ? 'Movie' : 'Series'}, rated ${(item.vote_average || 0).toFixed(1)}`}
+      accessibilityHint="Double tap to view details"
     >
       <FadeImage
         source={tmdbService.getImageSource(item.poster_path)}
@@ -189,6 +198,9 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
       onLongPress={() => handleRemoveCW(item)}
       activeOpacity={0.8}
       style={[styles.posterCard, { width: posterWidth }]}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.name}, currently watching`}
+      accessibilityHint="Double tap to view, long press to remove"
     >
       <FadeImage
         source={tmdbService.getImageSource(item.posterPath)}
@@ -232,6 +244,9 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
               }
             }}
             style={styles.searchToggle}
+            accessibilityRole="button"
+            accessibilityLabel={searchActive ? "Close search" : "Open search"}
+            accessibilityHint={searchActive ? "Double tap to close search" : "Double tap to open search"}
           >
             <Ionicons name={searchActive ? "close" : "search"} size={20} color={COLORS.text.primary} />
           </TouchableOpacity>
@@ -248,9 +263,11 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
               value={query}
               onChangeText={handleSearch}
               autoFocus
+              accessibilityLabel="Search movies and shows"
+              accessibilityHint="Type to search for movies and TV shows"
             />
             {query.length > 0 && (
-              <TouchableOpacity onPress={clearSearch} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={styles.clearButton}>
+              <TouchableOpacity onPress={clearSearch} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={styles.clearButton} accessibilityRole="button" accessibilityLabel="Clear search">
                 <Ionicons name="close-circle" size={20} color={COLORS.text.secondary} />
               </TouchableOpacity>
             )}
@@ -262,7 +279,7 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
           <View style={styles.recentSearches}>
             <View style={styles.recentHeader}>
               <Text style={styles.recentTitle}>Recent</Text>
-              <TouchableOpacity onPress={clearAllHistory} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity onPress={clearAllHistory} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Clear all search history">
                 <Text style={styles.recentClear}>Clear All</Text>
               </TouchableOpacity>
             </View>
@@ -272,6 +289,9 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
                 style={styles.recentRow}
                 onPress={() => onSelectShow(item)}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.name || item.title}, ${item.media_type === 'movie' ? 'Movie' : 'Series'}`}
+                accessibilityHint="Double tap to view details"
               >
                 {item.poster_path ? (
                   <FadeImage
@@ -293,6 +313,8 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
                   onPress={() => removeHistoryItem(item)}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                   style={{ padding: 4 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${item.name || item.title} from search history`}
                 >
                   <Ionicons name="close" size={14} color={COLORS.text.muted} />
                 </TouchableOpacity>
@@ -423,6 +445,10 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
                     style={[styles.genreChip, selectedGenre === g.id && styles.genreChipActive]}
                     onPress={() => handleGenreSelect(g.id)}
                     activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${g.name} genre`}
+                    accessibilityHint="Double tap to filter by this genre"
+                    accessibilityState={{ selected: selectedGenre === g.id }}
                   >
                     <Ionicons name={g.icon as any} size={14} color={selectedGenre === g.id ? COLORS.primary : COLORS.text.secondary} />
                     <Text style={[styles.genreChipText, selectedGenre === g.id && styles.genreChipTextActive]}>{g.name}</Text>

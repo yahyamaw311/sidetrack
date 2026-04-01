@@ -185,7 +185,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
 
     return (
       <View style={tvStyles.breadcrumb}>
-        <TouchableOpacity onPress={drillBack} style={tvStyles.breadcrumbBack} activeOpacity={0.7}>
+        <TouchableOpacity onPress={drillBack} style={tvStyles.breadcrumbBack} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Go back to shows list">
           <Ionicons name="chevron-back" size={18} color={COLORS.primary} />
         </TouchableOpacity>
 
@@ -200,6 +200,8 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
           onPress={() => onSelectShow?.(selectedShow.seriesId)}
           style={tvStyles.infoButton}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`View details for ${selectedShow.seriesName}`}
         >
           <Ionicons name="information-circle-outline" size={22} color={COLORS.primary} />
         </TouchableOpacity>
@@ -272,6 +274,8 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
             onPress={() => setAddModalVisible(true)}
             style={styles.favFilterBtn}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Add watched movie"
           >
             <Ionicons name="add" size={20} color={COLORS.text.primary} />
           </TouchableOpacity>
@@ -282,6 +286,9 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
             }}
             style={[styles.favFilterBtn, showFavoritesOnly && styles.favFilterBtnActive]}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={showFavoritesOnly ? "Show all items" : "Show favorites only"}
+            accessibilityState={{ selected: showFavoritesOnly }}
           >
             <Ionicons
               name={showFavoritesOnly ? 'star' : 'star-outline'}
@@ -301,9 +308,11 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
             onChangeText={setSearchQuery}
             returnKeyType="search"
             autoCorrect={false}
+            accessibilityLabel="Search watch log"
+            accessibilityHint="Type to filter movies and shows"
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Clear search">
               <Ionicons name="close-circle" size={16} color={COLORS.text.muted} />
             </TouchableOpacity>
           )}
@@ -325,7 +334,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
                   : 'Movies and TV shows you watch will appear here'}
             </Text>
             {!showFavoritesOnly && !query && onNavigateToExplore && (
-              <TouchableOpacity style={styles.ctaButton} onPress={onNavigateToExplore} activeOpacity={0.8}>
+              <TouchableOpacity style={styles.ctaButton} onPress={onNavigateToExplore} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Browse Explore" accessibilityHint="Double tap to navigate to Explore">
                 <Ionicons name="compass-outline" size={18} color={COLORS.background} />
                 <Text style={styles.ctaText}>Browse Explore</Text>
               </TouchableOpacity>

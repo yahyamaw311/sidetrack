@@ -41,6 +41,9 @@ export const HistoryMovieRow: React.FC<HistoryMovieRowProps> = ({ item, onSelect
       style={tvStyles.showCard}
       onPress={() => onSelectMovie?.(item.movieId)}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.title}, rated ${item.rating > 0 ? item.rating.toFixed(1) : 'unrated'}, watched ${formatDate(item.watchedDate)}`}
+      accessibilityHint="Double tap to view details, swipe left to delete"
     >
       {item.posterPath ? (
         <FadeImage
@@ -98,6 +101,9 @@ export const HistoryShowCard: React.FC<HistoryShowCardProps> = ({ item, drillInt
       style={tvStyles.showCard}
       onPress={() => drillIntoShow(item.seriesId)}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.seriesName}, ${totalSeasons} season${totalSeasons !== 1 ? 's' : ''}, ${totalEps} episode${totalEps !== 1 ? 's' : ''}`}
+      accessibilityHint="Double tap to view episodes"
     >
       {item.episodes[0]?.stillPath ? (
         <FadeImage
@@ -146,6 +152,9 @@ export const HistoryEpisodeRow: React.FC<HistoryEpisodeRowProps> = ({ item, onRe
         style={tvStyles.episodeRow}
         activeOpacity={0.7}
         onPress={() => openEpisodeEdit(item)}
+        accessibilityRole="button"
+        accessibilityLabel={`S${item.seasonNumber}E${item.episodeNumber}, ${item.episodeName || `Episode ${item.episodeNumber}`}, ${starRating > 0 ? `rated ${starRating}` : 'not rated'}`}
+        accessibilityHint="Double tap to edit, swipe left to delete"
       >
         <View style={tvStyles.epNumberWrap}>
           <Text style={tvStyles.epNumber}>{item.episodeNumber}</Text>
