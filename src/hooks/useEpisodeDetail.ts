@@ -1,9 +1,10 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import * as Haptics from 'expo-haptics';
 import { tmdbService } from '../services/tmdbService';
 import { StorageProvider } from '../services/StorageProvider';
 import { DetailCache } from '../services/DetailCache';
 import { useNetwork } from '../contexts/NetworkContext';
+import { useAppStore } from '../store/appStore';
 import { Episode, TVShowDetail, WatchedEpisode } from '../types';
 import { SnackbarConfig } from '../components/Snackbar';
 
@@ -11,8 +12,6 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
   const { isOffline } = useNetwork();
   const [episode, setEpisode] = useState<Episode | null>(null);
   const [show, setShow] = useState<TVShowDetail | null>(null);
-  const [isFavorite, setIsFavorite] = useState(false);
-  const [isInWatchlist, setIsInWatchlist] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -23,13 +22,42 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
 
   const [watchedModalVisible, setWatchedModalVisible] = useState(false);
   const [watchedEpisode, setWatchedEpisode] = useState<Episode | null>(null);
-  const [watchedEpisodeIds, setWatchedEpisodeIds] = useState<Set<number>>(new Set());
   const [editInitialData, setEditInitialData] = useState<{
     rating?: number; liked?: boolean; review?: string; tags?: string;
     rewatch?: boolean; noSpoilers?: boolean; watchedDate?: Date;
   } | null>(null);
   const [snackbar, setSnackbar] = useState<SnackbarConfig | null>(null);
   const [trailerKey, setTrailerKey] = useState<string | null>(null);
+
+  // ── Store selectors ──
+  const watchlist = useAppStore(s => s.watchlist);
+  const favoriteEpisodeIds = useAppStore(s => s.favoriteEpisodeIds);
+  const storeEpisodes = useAppStore(s => s.watchedEpisodes);
+  const storeMarkEpisodeWatched = useAppStore(s => s.markEpisodeWatched);
+  const storeToggleFavoriteEpisode = useAppStore(s => s.toggleFavoriteEpisode);
+  const storeAddToWatchlist = useAppStore(s => s.addToWatchlist);
+  const storeRemoveFromWatchlist = useAppStore(s => s.removeFromWatchlist);
+  const storeAddToCurrentlyWatching = useAppStore(s => s.addToCurrentlyWatching);
+  const storeRemoveFromCurrentlyWatching = useAppStore(s => s.removeFromCurrentlyWatching);
+
+  // ── Derived state from store ──
+  const isInWatchlist = useMemo(
+    () => watchlist.some(item => item.seriesId === tvId && (item.itemType || 'tv') === 'tv'),
+    [watchlist, tvId]
+  );
+
+  const isFavorite = useMemo(
+    () => episode ? favoriteEpisodeIds.has(episode.id) : false,
+    [favoriteEpisodeIds, episode]
+  );
+
+  const watchedEpisodeIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const e of storeEpisodes) {
+      if (e.seriesId === tvId) ids.add(e.episodeId);
+    }
+    return ids;
+  }, [storeEpisodes, tvId]);
 
   const loadData = useCallback(async (isRefresh = false) => {
     if (!isRefresh) setLoading(true);
@@ -61,8 +89,6 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
 
     if (showData) {
       setShow(showData);
-      const watchlist = await StorageProvider.getWatchlist();
-      setIsInWatchlist(!!watchlist.find((item: any) => item.seriesId === tvId && (item.itemType || 'tv') === 'tv'));
 
       // Fetch show-level IMDb rating (non-critical, skip if offline)
       if (!isOffline) {
@@ -87,9 +113,6 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
       setEpisode(ep || null);
 
       if (ep) {
-        const fav = await StorageProvider.isEpisodeFavorite(ep.id);
-        setIsFavorite(fav);
-
         // Fetch episode-specific IMDb rating (non-critical, skip if offline)
         if (!isOffline) {
           const omdb = await tmdbService.getIMDbEpisodeRating(tvId, ep.season_number, ep.episode_number);
@@ -104,11 +127,6 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
       setLoadError(true);
     }
     if (!isRefresh) setLoading(false);
-
-    // Load watched episode IDs for this show only (using partitioned storage)
-    const watchedForShow = await StorageProvider.getWatchedEpisodesForShow(tvId);
-    const ids = new Set(watchedForShow.map((w: WatchedEpisode) => w.episodeId));
-    setWatchedEpisodeIds(ids);
   }, [tvId, initialSeason, initialEpisode, isOffline]);
 
   useEffect(() => {
@@ -167,11 +185,10 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
       genres: show.genres?.map((g: any) => g.name),
     };
 
-    await StorageProvider.markEpisodeAsWatched(entry);
-    setWatchedEpisodeIds(prev => new Set(prev).add(watchedEpisode.id));
+    await storeMarkEpisodeWatched(entry);
 
     // Auto-add to Currently Watching
-    await StorageProvider.addToCurrentlyWatching({
+    await storeAddToCurrentlyWatching({
       seriesId: tvId,
       name: show?.name || '',
       posterPath: show?.poster_path || null,
@@ -192,7 +209,7 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
       }
       const fullyWatched = await StorageProvider.isShowFullyWatched(tvId, seasonMap);
       if (fullyWatched) {
-        await StorageProvider.removeFromCurrentlyWatching(tvId);
+        await storeRemoveFromCurrentlyWatching(tvId);
       }
     }
 
@@ -209,8 +226,6 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
 
   const selectEpisode = async (ep: Episode) => {
     setEpisode(ep);
-    const fav = await StorageProvider.isEpisodeFavorite(ep.id);
-    setIsFavorite(fav);
 
     // Fetch episode-specific IMDb rating
     setImdbRating(null);
@@ -225,24 +240,16 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
   const toggleWatchlist = async () => {
     if (!show) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const prev = isInWatchlist;
-    // Optimistic update — flip immediately
-    setIsInWatchlist(!prev);
-    try {
-      if (prev) {
-        await StorageProvider.removeFromWatchlist(tvId, 'tv');
-      } else {
-        await StorageProvider.addToWatchlist({
-          seriesId: tvId,
-          name: show.name,
-          posterPath: show.poster_path,
-          addedDate: new Date().toISOString(),
-          itemType: 'tv',
-        });
-      }
-    } catch {
-      // Rollback on failure
-      setIsInWatchlist(prev);
+    if (isInWatchlist) {
+      await storeRemoveFromWatchlist(tvId, 'tv');
+    } else {
+      await storeAddToWatchlist({
+        seriesId: tvId,
+        name: show.name,
+        posterPath: show.poster_path,
+        addedDate: new Date().toISOString(),
+        itemType: 'tv',
+      });
     }
   };
 
@@ -250,14 +257,7 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
     if (episode) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       const newState = !isFavorite;
-      // Optimistic update
-      setIsFavorite(newState);
-      try {
-        await StorageProvider.toggleFavoriteEpisode(episode.id, newState);
-      } catch {
-        // Rollback on failure
-        setIsFavorite(!newState);
-      }
+      await storeToggleFavoriteEpisode(episode.id, newState);
     }
   };
 
@@ -284,7 +284,6 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
     watchedEpisode,
     setWatchedEpisode,
     watchedEpisodeIds,
-    setWatchedEpisodeIds,
     editInitialData,
     setEditInitialData,
     snackbar,

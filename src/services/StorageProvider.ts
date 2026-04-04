@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { WatchedEpisode, QueuedItem, WatchedMovie, FavoriteMovie, CurrentlyWatchingItem, SearchResult } from '../types';
 import { notifyErrorGlobal } from '../contexts/ErrorNotifier';
-import { dataEvents } from './DataEvents';
+
 import { storageMutex } from './Mutex';
 import { CONFIG } from '../constants/config';
 
@@ -151,7 +151,7 @@ export const StorageProvider = {
       }
 
       await setData(key, watched);
-      dataEvents.emit('watchedEpisodes');
+
     });
   },
 
@@ -172,8 +172,6 @@ export const StorageProvider = {
           await setData(STORAGE_KEYS.WATCHED, legacy);
         }
       }
-
-      dataEvents.emit('watchedEpisodes');
     });
   },
 
@@ -188,7 +186,7 @@ export const StorageProvider = {
         delete favorites[episodeId];
       }
       await setData(STORAGE_KEYS.FAVORITES, favorites);
-      dataEvents.emit('favorites');
+
     });
   },
 
@@ -231,7 +229,7 @@ export const StorageProvider = {
       const watchlist = await StorageProvider._migrateWatchlist();
       watchlist[`${item.itemType}_${item.seriesId}`] = item;
       await setData(STORAGE_KEYS.WATCHLIST, watchlist);
-      dataEvents.emit('watchlist');
+
     });
   },
 
@@ -240,7 +238,6 @@ export const StorageProvider = {
       const watchlist = await StorageProvider._migrateWatchlist();
       delete watchlist[`${itemType}_${seriesId}`];
       await setData(STORAGE_KEYS.WATCHLIST, watchlist);
-      dataEvents.emit('watchlist');
     });
   },
 
@@ -262,7 +259,7 @@ export const StorageProvider = {
       const key = `${movie.movieId}_${movie.watchedDate}`;
       watched[key] = movie;
       await setData(STORAGE_KEYS.WATCHED_MOVIES, watched);
-      dataEvents.emit('watchedMovies');
+
     });
   },
 
@@ -273,7 +270,7 @@ export const StorageProvider = {
       if (key) {
         watched[key].rating = newRating;
         await setData(STORAGE_KEYS.WATCHED_MOVIES, watched);
-        dataEvents.emit('watchedMovies');
+
       }
     });
   },
@@ -291,7 +288,7 @@ export const StorageProvider = {
       if (keyToDelete) {
         delete watched[keyToDelete];
         await setData(STORAGE_KEYS.WATCHED_MOVIES, watched);
-        dataEvents.emit('watchedMovies');
+
       }
     });
   },
@@ -310,7 +307,7 @@ export const StorageProvider = {
       const newKey = `${newMovie.movieId}_${newMovie.watchedDate}`;
       watched[newKey] = newMovie;
       await setData(STORAGE_KEYS.WATCHED_MOVIES, watched);
-      dataEvents.emit('watchedMovies');
+
     });
   },
 
@@ -349,7 +346,7 @@ export const StorageProvider = {
         delete favorites[movieId];
       }
       await setData(STORAGE_KEYS.FAVORITE_MOVIES, favorites);
-      dataEvents.emit('favorites');
+
     });
   },
 
@@ -372,7 +369,7 @@ export const StorageProvider = {
       const filtered = list.filter(i => i.seriesId !== item.seriesId);
       filtered.unshift({ ...item, lastUpdated: new Date().toISOString() });
       await setData(STORAGE_KEYS.CURRENTLY_WATCHING, filtered);
-      dataEvents.emit('currentlyWatching');
+
     });
   },
 
@@ -380,7 +377,7 @@ export const StorageProvider = {
     return withMutex(async () => {
       const list = await getData<CurrentlyWatchingItem[]>(STORAGE_KEYS.CURRENTLY_WATCHING, []);
       await setData(STORAGE_KEYS.CURRENTLY_WATCHING, list.filter(i => i.seriesId !== seriesId));
-      dataEvents.emit('currentlyWatching');
+
     });
   },
 

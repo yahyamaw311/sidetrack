@@ -39,12 +39,6 @@ export const MainNavigation = () => {
   const historyBackRef = useRef<(() => boolean) | null>(null);
   // Ref for the DiscoveryScreen back handler
   const discoveryBackRef = useRef<(() => boolean) | null>(null);
-  // Ref to refresh WatchlistScreen when detail closes
-  const watchlistRefreshRef = useRef<(() => void) | null>(null);
-  // Ref to refresh HistoryScreen when detail closes
-  const historyRefreshRef = useRef<(() => void) | null>(null);
-  // Ref to refresh DiscoveryScreen's currently-watching when detail closes
-  const discoveryRefreshRef = useRef<(() => void) | null>(null);
 
   const animateDetailIn = useCallback((show: SearchResult) => {
     setSelectedShow(show);
@@ -74,9 +68,6 @@ export const MainNavigation = () => {
       setVisibleDetail(null);
       setSelectedShow(null);
       isAnimating.current = false;
-      watchlistRefreshRef.current?.();
-      historyRefreshRef.current?.();
-      discoveryRefreshRef.current?.();
       callback?.();
     });
   }, [detailAnim]);
@@ -245,20 +236,20 @@ export const MainNavigation = () => {
       {/* Tab screens — lazy mounted, each wrapped in its own ErrorBoundary */}
       <View style={[styles.tabScreen, activeTab !== 'Explore' && styles.tabScreenHidden]}>
         <ErrorBoundary fallbackLabel="Explore">
-          <DiscoveryScreen onSelectShow={handleSelectShow} onBackRef={(fn: (() => boolean) | null) => { discoveryBackRef.current = fn; }} refreshRef={(fn: (() => void) | null) => { discoveryRefreshRef.current = fn; }} />
+          <DiscoveryScreen onSelectShow={handleSelectShow} onBackRef={(fn: (() => boolean) | null) => { discoveryBackRef.current = fn; }} />
         </ErrorBoundary>
       </View>
       {mountedTabs.has('Watchlist') && (
         <View style={[styles.tabScreen, activeTab !== 'Watchlist' && styles.tabScreenHidden]}>
           <ErrorBoundary fallbackLabel="Watchlist">
-            <WatchlistScreen onSelectShow={handleSelectFromWatchlist} refreshRef={(fn: (() => void) | null) => { watchlistRefreshRef.current = fn; }} onNavigateToExplore={() => handleTabChange('Explore')} />
+            <WatchlistScreen onSelectShow={handleSelectFromWatchlist} onNavigateToExplore={() => handleTabChange('Explore')} />
           </ErrorBoundary>
         </View>
       )}
       {mountedTabs.has('Log') && (
         <View style={[styles.tabScreen, activeTab !== 'Log' && styles.tabScreenHidden]}>
           <ErrorBoundary fallbackLabel="Watch Log">
-            <HistoryScreen key={historyKey} onSelectMovie={handleSelectFromHistory} onSelectShow={handleSelectShowFromHistory} onOpenWrapped={handleOpenWrapped} onBackRef={(fn: (() => boolean) | null) => { historyBackRef.current = fn; }} refreshRef={(fn: (() => void) | null) => { historyRefreshRef.current = fn; }} />
+            <HistoryScreen key={historyKey} onSelectMovie={handleSelectFromHistory} onSelectShow={handleSelectShowFromHistory} onOpenWrapped={handleOpenWrapped} onBackRef={(fn: (() => boolean) | null) => { historyBackRef.current = fn; }} />
           </ErrorBoundary>
         </View>
       )}

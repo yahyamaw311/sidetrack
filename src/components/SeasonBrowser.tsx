@@ -3,9 +3,9 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Lay
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS, getRatingColor } from '../constants/theme';
 import { tmdbService } from '../services/tmdbService';
-import { StorageProvider } from '../services/StorageProvider';
 import { Episode, SeasonSummary, EpisodeDetailData } from '../types';
 import { FadeImage } from './FadeImage';
+import { useAppStore } from '../store/appStore';
 
 interface SeasonBrowserProps {
     tvId: number;
@@ -15,7 +15,6 @@ interface SeasonBrowserProps {
     onSelectEpisode: (ep: Episode) => void;
     onOpenWatchedModal: (ep: Episode) => void;
     onEditWatchedEntry: (ep: Episode) => void;
-    onWatchedIdsChange: (updater: (prev: Set<number>) => Set<number>) => void;
     ListHeaderComponent?: React.ReactElement;
     refreshControl?: React.ReactElement<RefreshControlProps>;
 }
@@ -28,10 +27,10 @@ export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
     onSelectEpisode,
     onOpenWatchedModal,
     onEditWatchedEntry,
-    onWatchedIdsChange,
     ListHeaderComponent,
     refreshControl,
 }) => {
+    const storeRemoveEpisode = useAppStore(s => s.removeEpisode);
     const [expandedSeason, setExpandedSeason] = useState<number | null>(null);
     const [seasonEpisodes, setSeasonEpisodes] = useState<Record<number, Episode[]>>({});
     const [loadingSeason, setLoadingSeason] = useState<number | null>(null);
@@ -255,12 +254,7 @@ export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
                                                     text: 'Remove',
                                                     style: 'destructive',
                                                     onPress: async () => {
-                                                        await StorageProvider.removeWatchedEpisode(ep.seriesId, ep.id);
-                                                        onWatchedIdsChange(prev => {
-                                                            const next = new Set(prev);
-                                                            next.delete(ep.id);
-                                                            return next;
-                                                        });
+                                                        await storeRemoveEpisode(ep.seriesId, ep.id);
                                                     },
                                                 },
                                             ]

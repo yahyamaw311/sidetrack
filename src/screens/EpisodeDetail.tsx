@@ -37,7 +37,6 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
     watchedEpisode,
     setWatchedEpisode,
     watchedEpisodeIds,
-    setWatchedEpisodeIds,
     editInitialData,
     setEditInitialData,
     snackbar,
@@ -118,7 +117,6 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
         onSelectEpisode={selectEpisode}
         onOpenWatchedModal={openWatchedModal}
         onEditWatchedEntry={openEditWatchedModal}
-        onWatchedIdsChange={setWatchedEpisodeIds}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

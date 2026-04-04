@@ -1,9 +1,9 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import * as Haptics from 'expo-haptics';
 import { tmdbService } from '../services/tmdbService';
-import { StorageProvider } from '../services/StorageProvider';
 import { DetailCache } from '../services/DetailCache';
 import { useNetwork } from '../contexts/NetworkContext';
+import { useAppStore } from '../store/appStore';
 import { MovieDetail as MovieDetailType, WatchedMovie } from '../types';
 import { SnackbarConfig } from '../components/Snackbar';
 
@@ -12,18 +12,34 @@ export const useMovieDetail = (movieId: number) => {
   const [movie, setMovie] = useState<MovieDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
-  const [isFavorite, setIsFavorite] = useState(false);
-  const [isInWatchlist, setIsInWatchlist] = useState(false);
   const [imdbRating, setImdbRating] = useState<string | null>(null);
   const [imdbVotes, setImdbVotes] = useState<string | null>(null);
   const [trailerKey, setTrailerKey] = useState<string | null>(null);
   const [trailerPlaying, setTrailerPlaying] = useState(false);
-
-  // Log / Rate state
-  const [isWatched, setIsWatched] = useState(false);
-  const [existingEntry, setExistingEntry] = useState<WatchedMovie | null>(null);
   const [ratingModalVisible, setRatingModalVisible] = useState(false);
   const [snackbar, setSnackbar] = useState<SnackbarConfig | null>(null);
+
+  // ── Store selectors ──
+  const watchlist = useAppStore(s => s.watchlist);
+  const favoriteMovieIds = useAppStore(s => s.favoriteMovieIds);
+  const watchedMovies = useAppStore(s => s.watchedMovies);
+  const storeAddWatchedMovie = useAppStore(s => s.addWatchedMovie);
+  const storeUpdateWatchedMovie = useAppStore(s => s.updateWatchedMovie);
+  const storeToggleFavorite = useAppStore(s => s.toggleFavoriteMovie);
+  const storeAddToWatchlist = useAppStore(s => s.addToWatchlist);
+  const storeRemoveFromWatchlist = useAppStore(s => s.removeFromWatchlist);
+
+  // ── Derived state from store ──
+  const isFavorite = useMemo(() => favoriteMovieIds.has(movieId), [favoriteMovieIds, movieId]);
+  const isInWatchlist = useMemo(
+    () => watchlist.some(item => item.seriesId === movieId && item.itemType === 'movie'),
+    [watchlist, movieId]
+  );
+  const existingEntry = useMemo(
+    () => watchedMovies.find(m => m.movieId === movieId) ?? null,
+    [watchedMovies, movieId]
+  );
+  const isWatched = existingEntry !== null;
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -45,16 +61,6 @@ export const useMovieDetail = (movieId: number) => {
       setMovie(data);
 
       if (data) {
-        const [watchlist, favStatus, watchedEntry] = await Promise.all([
-          StorageProvider.getWatchlist(),
-          StorageProvider.isMovieFavorite(movieId),
-          StorageProvider.isMovieWatched(movieId),
-        ]);
-        setIsInWatchlist(!!watchlist.find((item: any) => item.seriesId === movieId && item.itemType === 'movie'));
-        setIsFavorite(favStatus);
-        setIsWatched(!!watchedEntry);
-        setExistingEntry(watchedEntry);
-
         // Fetch IMDb rating (non-critical, skip if offline)
         if (!isOffline && data.imdb_id) {
           const imdb = await tmdbService.getIMDbRating(data.imdb_id);
@@ -84,24 +90,16 @@ export const useMovieDetail = (movieId: number) => {
   const toggleWatchlist = async () => {
     if (!movie) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const prev = isInWatchlist;
-    // Optimistic update
-    setIsInWatchlist(!prev);
-    try {
-      if (prev) {
-        await StorageProvider.removeFromWatchlist(movieId, 'movie');
-      } else {
-        await StorageProvider.addToWatchlist({
-          seriesId: movieId,
-          name: movie.title,
-          posterPath: movie.poster_path,
-          addedDate: new Date().toISOString(),
-          itemType: 'movie',
-        });
-      }
-    } catch {
-      // Rollback on failure
-      setIsInWatchlist(prev);
+    if (isInWatchlist) {
+      await storeRemoveFromWatchlist(movieId, 'movie');
+    } else {
+      await storeAddToWatchlist({
+        seriesId: movieId,
+        name: movie.title,
+        posterPath: movie.poster_path,
+        addedDate: new Date().toISOString(),
+        itemType: 'movie',
+      });
     }
   };
 
@@ -109,19 +107,12 @@ export const useMovieDetail = (movieId: number) => {
     if (!movie) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const newState = !isFavorite;
-    // Optimistic update
-    setIsFavorite(newState);
-    try {
-      await StorageProvider.toggleFavoriteMovie(movieId, newState, newState ? {
-        movieId: movie.id,
-        title: movie.title,
-        posterPath: movie.poster_path,
-        addedDate: new Date().toISOString(),
-      } : undefined);
-    } catch {
-      // Rollback on failure
-      setIsFavorite(!newState);
-    }
+    await storeToggleFavorite(movieId, newState, newState ? {
+      movieId: movie.id,
+      title: movie.title,
+      posterPath: movie.poster_path,
+      addedDate: new Date().toISOString(),
+    } : undefined);
   };
 
   const openLogModal = () => {
@@ -163,13 +154,11 @@ export const useMovieDetail = (movieId: number) => {
     };
 
     if (existingEntry) {
-      await StorageProvider.updateWatchedMovie(watchedMovie, existingEntry.watchedDate);
+      await storeUpdateWatchedMovie(watchedMovie, existingEntry.watchedDate);
     } else {
-      await StorageProvider.addToWatchedMovies(watchedMovie);
+      await storeAddWatchedMovie(watchedMovie);
     }
 
-    setIsWatched(true);
-    setExistingEntry(watchedMovie);
     setRatingModalVisible(false);
     setSnackbar({
       message: existingEntry ? `Updated ${movie.title}` : `Logged ${movie.title}`,

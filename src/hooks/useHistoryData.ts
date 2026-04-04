@@ -1,8 +1,7 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { LayoutAnimation } from 'react-native';
-import { StorageProvider } from '../services/StorageProvider';
-import { useDataEvent } from './useDataEvent';
-import { WatchedMovie, WatchedEpisode } from '../types';
+import { useAppStore } from '../store/appStore';
+import { WatchedEpisode } from '../types';
 
 export type TVDrillLevel = 'shows' | 'episodes';
 
@@ -16,83 +15,68 @@ export interface ShowGroup {
 }
 
 export type UnifiedItem =
-  | { type: 'movie'; data: WatchedMovie; sortDate: string }
+  | { type: 'movie'; data: import('../types').WatchedMovie; sortDate: string }
   | { type: 'show'; data: ShowGroup; sortDate: string };
 
 export const useHistoryData = () => {
-  const [movies, setMovies] = useState<WatchedMovie[]>([]);
-  const [episodes, setEpisodes] = useState<WatchedEpisode[]>([]);
-  const [loading, setLoading] = useState(true);
+  // ── Store selectors (single source of truth) ──
+  const movies = useAppStore(s => s.watchedMovies);
+  const episodes = useAppStore(s => s.watchedEpisodes);
+  const favoriteMovieIds = useAppStore(s => s.favoriteMovieIds);
+  const favoriteEpisodeIds = useAppStore(s => s.favoriteEpisodeIds);
+  const storeRemoveMovie = useAppStore(s => s.removeWatchedMovie);
+  const storeRemoveEpisode = useAppStore(s => s.removeEpisode);
+  const hydrate = useAppStore(s => s.hydrate);
+
+  const [loading, setLoading] = useState(!useAppStore.getState().hydrated);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Favorites filter state
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
-  const [favoriteMovieIds, setFavoriteMovieIds] = useState<Set<number>>(new Set());
-  const [favoriteEpisodeIds, setFavoriteEpisodeIds] = useState<Set<number>>(new Set());
 
   // TV drill-down state
   const [tvLevel, setTvLevel] = useState<TVDrillLevel>('shows');
   const [selectedShowId, setSelectedShowId] = useState<number | null>(null);
 
-  // Single source of truth for fetching & setting history data
-  const fetchAndSetHistoryData = useCallback(async () => {
-    const [movieData, episodeData, favMovies, favEpisodeIdList] = await Promise.all([
-      StorageProvider.getWatchedMovies(),
-      StorageProvider.getAllWatchedEpisodes(),
-      StorageProvider.getAllFavoriteMovies(),
-      StorageProvider.getAllFavorites(),
-    ]);
-    setMovies(movieData);
-    setEpisodes(episodeData);
-    setFavoriteMovieIds(new Set(favMovies.map((m: any) => m.movieId)));
-    setFavoriteEpisodeIds(new Set(favEpisodeIdList));
+  // Mark loading done once store is hydrated
+  useEffect(() => {
+    if (useAppStore.getState().hydrated) {
+      setLoading(false);
+      return;
+    }
+    const unsub = useAppStore.subscribe((s) => {
+      if (s.hydrated) {
+        setLoading(false);
+        unsub();
+      }
+    });
+    return unsub;
   }, []);
 
   const loadHistory = useCallback(async () => {
     setLoading(true);
-    await fetchAndSetHistoryData();
+    await hydrate();
     setLoading(false);
-  }, [fetchAndSetHistoryData]);
+  }, [hydrate]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchAndSetHistoryData();
+    await hydrate();
     setRefreshing(false);
-  }, [fetchAndSetHistoryData]);
+  }, [hydrate]);
 
-  useEffect(() => {
-    loadHistory();
-  }, [loadHistory]);
-
-  useDataEvent('watchedMovies', fetchAndSetHistoryData);
-  useDataEvent('watchedEpisodes', fetchAndSetHistoryData);
-  useDataEvent('favorites', fetchAndSetHistoryData);
+  // Alias for backward compat (ProfileScreen uses this)
+  const fetchAndSetHistoryData = handleRefresh;
 
   const handleRemoveMovie = async (movieId: number, watchedDate: string) => {
-    // Optimistic removal
-    const prevMovies = movies;
-    setMovies(prev => prev.filter(m => !(m.movieId === movieId && m.watchedDate === watchedDate)));
-    try {
-      await StorageProvider.removeFromWatchedMovies(movieId, watchedDate);
-    } catch {
-      setMovies(prevMovies);
-    }
+    await storeRemoveMovie(movieId, watchedDate);
   };
 
   const handleRemoveEpisode = async (episodeId: number) => {
-    // Find the episode to get its seriesId for partitioning
     const epToRemove = episodes.find(e => e.episodeId === episodeId);
     if (!epToRemove) return;
-
-    // Optimistic removal
-    const prevEpisodes = episodes;
-    setEpisodes(prev => prev.filter(e => e.episodeId !== episodeId));
-    try {
-      await StorageProvider.removeWatchedEpisode(epToRemove.seriesId, episodeId);
-    } catch {
-      setEpisodes(prevEpisodes);
-    }
+    await storeRemoveEpisode(epToRemove.seriesId, episodeId);
   };
 
   const query = searchQuery.trim().toLowerCase();

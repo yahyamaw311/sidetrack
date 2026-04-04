@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
 import { StorageProvider } from '../services/StorageProvider';
-import { useDataEvent } from '../hooks/useDataEvent';
+import { useAppStore } from '../store/appStore';
 
 interface ProfileScreenProps {
   onOpenWrapped: () => void;
@@ -126,12 +126,14 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onOpenWrapped }) =
     setLoaded(true);
   }, []);
 
-  useEffect(() => { loadStats(); }, [loadStats]);
+  // Re-run stats when store data changes
+  const watchedMovies = useAppStore(s => s.watchedMovies);
+  const watchedEpisodes = useAppStore(s => s.watchedEpisodes);
+  const favoriteMovieIds = useAppStore(s => s.favoriteMovieIds);
+  const favoriteEpisodeIds = useAppStore(s => s.favoriteEpisodeIds);
+  const watchlist = useAppStore(s => s.watchlist);
 
-  useDataEvent('watchedMovies', loadStats);
-  useDataEvent('watchedEpisodes', loadStats);
-  useDataEvent('favorites', loadStats);
-  useDataEvent('watchlist', loadStats);
+  useEffect(() => { loadStats(); }, [loadStats, watchedMovies, watchedEpisodes, favoriteMovieIds, favoriteEpisodeIds, watchlist]);
 
   const handleRefresh = async () => {
     setRefreshing(true);

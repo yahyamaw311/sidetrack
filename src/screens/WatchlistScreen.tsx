@@ -1,16 +1,15 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
 import { CONFIG } from '../constants/config';
 import { tmdbService } from '../services/tmdbService';
-import { StorageProvider } from '../services/StorageProvider';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { SkeletonBox } from '../components/SkeletonBox';
 import { FadeImage } from '../components/FadeImage';
 import { QueuedItem } from '../types';
-import { useDataEvent } from '../hooks/useDataEvent';
+import { useAppStore } from '../store/appStore';
 
 const WatchlistSkeleton = () => (
   <View style={{ flex: 1, paddingHorizontal: SPACING.m, paddingTop: SPACING.s }}>
@@ -39,48 +38,21 @@ interface WatchlistScreenProps {
 
 type WatchlistFilter = 'all' | 'tv' | 'movie';
 
-export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, refreshRef, onNavigateToExplore }) => {
-  const [items, setItems] = useState<QueuedItem[]>([]);
-  const [loading, setLoading] = useState(true);
+export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, onNavigateToExplore }) => {
+  const items = useAppStore(s => s.watchlist);
+  const hydrated = useAppStore(s => s.hydrated);
+  const storeRemoveFromWatchlist = useAppStore(s => s.removeFromWatchlist);
   const [filter, setFilter] = useState<WatchlistFilter>('all');
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
 
-  const loadWatchlist = useCallback(async () => {
-    setLoading(true);
-    const data = await StorageProvider.getWatchlist();
-    setItems(data);
-    setLoading(false);
-  }, []);
-
-  // Silent refresh — updates data without showing loading spinner
-  const silentRefresh = useCallback(async () => {
-    const data = await StorageProvider.getWatchlist();
-    setItems(data);
-  }, []);
-
-  useEffect(() => {
-    loadWatchlist();
-  }, [loadWatchlist]);
-
-  useDataEvent('watchlist', silentRefresh);
-
-  // Expose refresh to parent so it can trigger reload when detail closes
-  const refreshFnRef = useRef(silentRefresh);
-  refreshFnRef.current = silentRefresh;
-
-  useEffect(() => {
-    if (refreshRef) refreshRef(() => { refreshFnRef.current(); });
-    return () => { refreshRef?.(null); };
-  }, []);  // Run once — stable callback via ref
+  const loading = !hydrated;
 
   const handleRemove = async (seriesId: number, itemType: 'tv' | 'movie') => {
     const key = `${itemType}_${seriesId}`;
     setDeletingIds(prev => new Set(prev).add(key));
     try {
-      await StorageProvider.removeFromWatchlist(seriesId, itemType);
-      // Wait a fraction of a second to show the spinner before disappearing
+      await storeRemoveFromWatchlist(seriesId, itemType);
       await new Promise(resolve => setTimeout(resolve, CONFIG.TIMING.PULL_TO_REFRESH_DELAY));
-      setItems(prev => prev.filter(i => !(i.seriesId === seriesId && (i.itemType || 'tv') === itemType)));
     } finally {
       setDeletingIds(prev => {
         const next = new Set(prev);
@@ -160,7 +132,10 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
     </View>
   );
 
-  const filteredItems = filter === 'all' ? items : items.filter(i => (i.itemType || 'tv') === filter);
+  const filteredItems = useMemo(() => 
+    filter === 'all' ? items : items.filter(i => (i.itemType || 'tv') === filter),
+    [items, filter]
+  );
 
   return (
     <View style={styles.container}>
@@ -208,8 +183,8 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
             showsVerticalScrollIndicator={false}
             refreshControl={
               <RefreshControl
-                refreshing={loading}
-                onRefresh={loadWatchlist}
+                refreshing={false}
+                onRefresh={() => useAppStore.getState().hydrate()}
                 tintColor={COLORS.primary}
                 colors={[COLORS.primary]}
               />

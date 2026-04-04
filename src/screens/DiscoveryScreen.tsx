@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useRef } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import {
   View, Text, FlatList, Image, TextInput,
   TouchableOpacity, ActivityIndicator,
@@ -7,7 +7,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { useDataEvent } from '../hooks/useDataEvent';
+import { useAppStore } from '../store/appStore';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING } from '../constants/theme';
 import { CONFIG } from '../constants/config';
@@ -29,7 +29,6 @@ import { styles } from './DiscoveryScreen.styles';
 interface DiscoveryScreenProps {
   onSelectShow: (show: SearchResult) => void;
   onBackRef?: (fn: (() => boolean) | null) => void;
-  refreshRef?: (fn: (() => void) | null) => void;
 }
 
 const GENRES = [
@@ -44,11 +43,13 @@ const GENRES = [
   { id: 99, name: 'Documentary', icon: 'videocam-outline' },
 ];
 
-export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, onBackRef, refreshRef }) => {
+export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, onBackRef }) => {
   const {
     trending, trendingMovies, topRated, currentlyWatching,
-    loading, refreshing, loadTrending, handleRefresh, refreshCW
+    loading, refreshing, loadTrending, handleRefresh
   } = useDiscoveryData();
+
+  const storeRemoveFromCW = useAppStore(s => s.removeFromCurrentlyWatching);
 
   const {
     query, results, searchActive, setSearchActive, searching, searchHistory,
@@ -78,15 +79,7 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
     return () => { onBackRef?.(null); };
   }, [searchActive, onBackRef, clearSearch]);
 
-  useDataEvent('currentlyWatching', refreshCW);
 
-  const refreshCWRef = useRef(refreshCW);
-  refreshCWRef.current = refreshCW;
-
-  useEffect(() => {
-    if (refreshRef) refreshRef(() => { refreshCWRef.current(); });
-    return () => { refreshRef?.(null); };
-  }, [refreshRef]);
 
   const handleSelectFromSearch = useCallback(async (item: SearchResult) => {
     await StorageProvider.addSearchHistoryItem(item);
@@ -182,10 +175,7 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
         {
           text: "Remove",
           style: "destructive",
-          onPress: async () => {
-            await StorageProvider.removeFromCurrentlyWatching(item.seriesId);
-            refreshCW();
-          }
+          onPress: () => storeRemoveFromCW(item.seriesId)
         }
       ]
     );

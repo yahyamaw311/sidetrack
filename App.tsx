@@ -20,6 +20,7 @@ import { NetworkProvider } from './src/contexts/NetworkContext';
 import { ErrorNotifierProvider } from './src/contexts/ErrorNotifier';
 import { OnboardingOverlay } from './src/components/OnboardingOverlay';
 import { StorageProvider } from './src/services/StorageProvider';
+import { useAppStore } from './src/store/appStore';
 import { COLORS } from './src/constants/theme';
 
 // Keep the splash screen visible while we fetch resources
@@ -38,12 +39,14 @@ export default function App() {
   const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
 
   useEffect(() => {
-    // Check onboarding and trigger storage optimization
+    // Check onboarding, trigger storage optimization, and hydrate the store
     Promise.all([
       StorageProvider.hasCompletedOnboarding(),
       StorageProvider.migrateToPartitionedStorage(),
-    ]).then(([completed]) => {
+    ]).then(async ([completed]) => {
       setShowOnboarding(!completed);
+      // Hydrate the centralized store after migration is complete
+      await useAppStore.getState().hydrate();
     });
   }, []);
 
