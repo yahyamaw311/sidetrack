@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { View, Text, Animated, PanResponder, StyleSheet, TouchableOpacity, LayoutAnimation } from 'react-native';
+import React, { useRef, useState, useEffect } from 'react';
+import { View, Text, Animated, PanResponder, StyleSheet, TouchableOpacity, LayoutAnimation, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { COLORS, FONTS, BORDER_RADIUS } from '../constants/theme';
@@ -12,13 +12,18 @@ interface SwipeableRowProps {
     children: React.ReactNode;
     onDelete: () => void;
     height?: number;
+    isLoading?: boolean;
 }
 
-export const SwipeableRow: React.FC<SwipeableRowProps> = ({ children, onDelete, height }) => {
+export const SwipeableRow = React.memo<SwipeableRowProps>(({ children, onDelete, height, isLoading }) => {
     const translateX = useRef(new Animated.Value(0)).current;
     const [revealed, setRevealed] = useState(false);
     const [measuredHeight, setMeasuredHeight] = useState<number | undefined>(height);
     const isDeleting = useRef(false);
+
+    useEffect(() => {
+        return () => translateX.stopAnimation();
+    }, [translateX]);
 
     const snapTo = (value: number) => {
         Animated.spring(translateX, {
@@ -66,7 +71,7 @@ export const SwipeableRow: React.FC<SwipeableRowProps> = ({ children, onDelete, 
     ).current;
 
     const handleConfirmDelete = () => {
-        if (isDeleting.current) return;
+        if (isDeleting.current || isLoading) return;
         isDeleting.current = true;
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Animated.timing(translateX, {
@@ -93,12 +98,19 @@ export const SwipeableRow: React.FC<SwipeableRowProps> = ({ children, onDelete, 
                     style={styles.deleteButton}
                     onPress={handleConfirmDelete}
                     activeOpacity={0.7}
+                    disabled={isLoading}
                     accessibilityRole="button"
                     accessibilityLabel="Delete"
                     accessibilityHint="Double tap to delete this item"
                 >
-                    <Ionicons name="trash" size={18} color="#fff" />
-                    <Text style={styles.deleteText}>Delete</Text>
+                    {isLoading ? (
+                        <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                        <>
+                            <Ionicons name="trash" size={18} color="#fff" />
+                            <Text style={styles.deleteText}>Delete</Text>
+                        </>
+                    )}
                 </TouchableOpacity>
             </Animated.View>
 
@@ -116,7 +128,7 @@ export const SwipeableRow: React.FC<SwipeableRowProps> = ({ children, onDelete, 
             </Animated.View>
         </View>
     );
-};
+});
 
 const styles = StyleSheet.create({
     container: {

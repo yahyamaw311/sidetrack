@@ -9,7 +9,7 @@ import { DatePickerModal } from './DatePicker';
 import { FadeImage } from './FadeImage';
 
 interface InitialData {
-    rating?: number;
+    rating?: number | null;
     liked?: boolean;
     review?: string;
     tags?: string;
@@ -23,7 +23,7 @@ interface WatchedMovieModalProps {
     movie: MovieDetail | null;
     onClose: () => void;
     onConfirm: (data: {
-        rating: number;
+        rating: number | null;
         liked: boolean;
         review: string;
         tags: string;
@@ -41,7 +41,7 @@ export const WatchedMovieModal: React.FC<WatchedMovieModalProps> = ({
     onConfirm,
     initialData,
 }) => {
-    const [rating, setRating] = useState(0);
+    const [rating, setRating] = useState<number | null>(null);
     const [liked, setLiked] = useState(false);
     const [review, setReview] = useState('');
     const [tags, setTags] = useState('');
@@ -53,7 +53,7 @@ export const WatchedMovieModal: React.FC<WatchedMovieModalProps> = ({
     // Pre-fill from initialData when modal opens
     useEffect(() => {
         if (visible && initialData) {
-            setRating(initialData.rating ?? 0);
+            setRating(initialData.rating ?? null);
             setLiked(initialData.liked ?? false);
             setReview(initialData.review ?? '');
             setTags(initialData.tags ?? '');
@@ -62,7 +62,7 @@ export const WatchedMovieModal: React.FC<WatchedMovieModalProps> = ({
             const d = initialData.watchedDate ?? new Date();
             setWatchedDate(d > new Date() ? new Date() : d);
         } else if (visible) {
-            setRating(0);
+            setRating(null);
             setLiked(false);
             setReview('');
             setTags('');
@@ -73,12 +73,11 @@ export const WatchedMovieModal: React.FC<WatchedMovieModalProps> = ({
     }, [visible]);
 
     const handleConfirm = () => {
-        if (rating === 0) return;
         const cleanTags = Array.from(new Set(tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean))).join(', ');
         const clampedDate = watchedDate > new Date() ? new Date() : watchedDate;
         onConfirm({ rating, liked, review: review.trim(), tags: cleanTags, rewatch, noSpoilers, watchedDate: clampedDate });
         // Reset state
-        setRating(0);
+        setRating(null);
         setLiked(false);
         setReview('');
         setTags('');
@@ -88,7 +87,7 @@ export const WatchedMovieModal: React.FC<WatchedMovieModalProps> = ({
     };
 
     const handleClose = () => {
-        setRating(0);
+        setRating(null);
         setLiked(false);
         setReview('');
         setTags('');
@@ -120,12 +119,10 @@ export const WatchedMovieModal: React.FC<WatchedMovieModalProps> = ({
                         <TouchableOpacity
                             onPress={handleConfirm}
                             style={styles.headerBtn}
-                            disabled={rating === 0}
                             accessibilityRole="button"
                             accessibilityLabel="Save"
-                            accessibilityState={{ disabled: rating === 0 }}
                         >
-                            <Ionicons name="checkmark" size={22} color={rating === 0 ? COLORS.text.muted : COLORS.text.primary} />
+                            <Ionicons name="checkmark" size={22} color={COLORS.text.primary} />
                         </TouchableOpacity>
                     </View>
 
@@ -176,7 +173,7 @@ export const WatchedMovieModal: React.FC<WatchedMovieModalProps> = ({
                         <View style={styles.ratingLikeRow}>
                             <View style={styles.starsWrap}>
                                 <SwipeableStars value={rating} onChange={setRating} />
-                                <Text style={styles.starsLabel}>{rating > 0 ? 'Rated' : 'Rate'}</Text>
+                                <Text style={styles.starsLabel}>{rating !== null ? (rating > 0 ? 'Rated' : '0 Stars') : 'Unrated'}</Text>
                             </View>
                             <TouchableOpacity
                                 style={styles.likeWrap}

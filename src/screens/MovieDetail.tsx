@@ -10,6 +10,7 @@ import { tmdbService } from '../services/tmdbService';
 import { Snackbar } from '../components/Snackbar';
 import { WatchedMovieModal } from '../components/WatchedMovieModal';
 import { FadeImage } from '../components/FadeImage';
+import { CreditList } from '../components/CreditList';
 import { useMovieDetail } from '../hooks/useMovieDetail';
 import { MovieDetailSkeleton } from '../components/movie/MovieDetailSkeleton';
 import { styles } from './MovieDetail.styles';
@@ -194,6 +195,14 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
               </Text>
             </TouchableOpacity>
           </View>
+
+          {/* Divider */}
+          <View style={styles.divider} />
+
+          {/* Cast & Crew */}
+          {movie.credits && (
+            <CreditList cast={movie.credits.cast} crew={movie.credits.crew} />
+          )}
 
           {/* Divider */}
           <View style={styles.divider} />

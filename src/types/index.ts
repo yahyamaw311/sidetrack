@@ -33,6 +33,10 @@ export interface TVShowDetail {
   status: string;
   genres: { id: number; name: string }[];
   external_ids?: { imdb_id?: string };
+  credits?: {
+    cast: CreditPerson[];
+    crew: CreditPerson[];
+  };
 }
 
 export interface MovieDetail {
@@ -47,6 +51,10 @@ export interface MovieDetail {
   genres: { id: number; name: string }[];
   status: string;
   imdb_id?: string;
+  credits?: {
+    cast: CreditPerson[];
+    crew: CreditPerson[];
+  };
 }
 
 export interface SeasonSummary {
@@ -107,7 +115,7 @@ export interface WatchedEpisode {
   stillPath?: string | null;
   seasonNumber: number;
   episodeNumber: number;
-  rating: number; // 0-5 stars (supports half: 0.5, 1, 1.5, ...)
+  rating: number | null; // null means unrated, 0-5 stars otherwise
   watchedDate: string; // ISO String
   liked?: boolean;
   review?: string;
@@ -126,7 +134,7 @@ export interface CurrentlyWatchingItem {
 }
 
 export interface QueuedItem {
-  seriesId: number;
+  itemId: number;
   name: string;
   posterPath: string | null;
   addedDate: string;
@@ -139,7 +147,7 @@ export interface WatchedMovie {
   title: string;
   posterPath: string | null;
   backdropPath: string | null;
-  rating: number; // 0-5 stars (supports half: 0.5, 1, 1.5, ...)
+  rating: number | null; // null means unrated, 0-5 stars otherwise
   watchedDate: string; // ISO String
   runtime: number;
   releaseDate: string;

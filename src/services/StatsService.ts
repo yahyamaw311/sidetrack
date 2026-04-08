@@ -104,9 +104,11 @@ const determinePersonality = (stats: Partial<WrappedStats>, movies: WatchedMovie
     const totalEntries = movies.length + episodes.length;
     if (totalEntries === 0) return { label: 'The Newcomer', emoji: '🌱', description: "You're just getting started! Log some watches and come back." };
 
-    const avgRating = movies.length > 0 ? movies.reduce((s, m) => s + m.rating, 0) / movies.length : 0;
-    const epAvg = episodes.length > 0 ? episodes.reduce((s, e) => s + e.rating, 0) / episodes.length : 0;
-    const combinedAvg = (avgRating + epAvg) / (movies.length > 0 && episodes.length > 0 ? 2 : 1);
+    const ratedMovies = movies.filter(m => m.rating !== null);
+    const avgRating = ratedMovies.length > 0 ? ratedMovies.reduce((s, m) => s + (m.rating as number), 0) / ratedMovies.length : 0;
+    const ratedEps = episodes.filter(e => e.rating !== null);
+    const epAvg = ratedEps.length > 0 ? ratedEps.reduce((s, e) => s + (e.rating as number), 0) / ratedEps.length : 0;
+    const combinedAvg = (avgRating + epAvg) / (ratedMovies.length > 0 && ratedEps.length > 0 ? 2 : 1);
     const reviewCount = [...movies.filter(m => (m as any).review), ...episodes.filter(e => e.review)].length;
 
     // Check for patterns
@@ -207,36 +209,36 @@ export const StatsService = {
         // ── Ratings ──
         // Normalize movie ratings: legacy entries used 1-10, new entries use 0-5 stars
         const normalizeMovieRating = (r: number) => (r > 5 ? r / 2 : r);
-        const movieRatings = movies.filter(m => m.rating > 0).map(m => normalizeMovieRating(m.rating));
+        const movieRatings = movies.filter(m => m.rating !== null).map(m => normalizeMovieRating(m.rating as number));
         const avgMovieRating = movieRatings.length > 0 ? Math.round((movieRatings.reduce((s, r) => s + r, 0) / movieRatings.length) * 10) / 10 : 0;
 
-        const epRatings = episodes.filter(e => e.rating > 0).map(e => e.rating);
+        const epRatings = episodes.filter(e => e.rating !== null).map(e => e.rating as number);
         const avgEpisodeRating = epRatings.length > 0 ? Math.round((epRatings.reduce((s, r) => s + r, 0) / epRatings.length) * 10) / 10 : 0;
 
         // Rating distribution (all ratings on unified 0-5 star scale)
         const ratingDistribution: Record<string, number> = {};
         // Normalize movie ratings to 0-5 stars (handles both legacy 1-10 and new 0-5)
         movies.forEach(m => {
-            if (m.rating > 0) {
+            if (m.rating !== null) {
                 const normalized = Math.round(normalizeMovieRating(m.rating) * 2) / 2; // round to nearest 0.5
                 const key = normalized.toString();
                 ratingDistribution[key] = (ratingDistribution[key] || 0) + 1;
             }
         });
         episodes.forEach(e => {
-            if (e.rating > 0) {
+            if (e.rating !== null) {
                 const key = e.rating.toString();
                 ratingDistribution[key] = (ratingDistribution[key] || 0) + 1;
             }
         });
 
         // Highest/lowest rated movies
-        const ratedMovies = movies.filter(m => m.rating > 0).sort((a, b) => b.rating - a.rating);
+        const ratedMovies = movies.filter(m => m.rating !== null).sort((a, b) => (b.rating as number) - (a.rating as number));
         const highestRatedMovies = ratedMovies.slice(0, 5).map(m => ({
-            title: m.title, rating: m.rating, posterPath: m.posterPath,
+            title: m.title, rating: m.rating as number, posterPath: m.posterPath,
         }));
         const lowestRatedMovies = ratedMovies.slice(-5).reverse().map(m => ({
-            title: m.title, rating: m.rating, posterPath: m.posterPath,
+            title: m.title, rating: m.rating as number, posterPath: m.posterPath,
         }));
 
         // Highest-rated shows (by average episode rating)
@@ -245,7 +247,7 @@ export const StatsService = {
             if (!showEpMap[e.seriesId]) {
                 showEpMap[e.seriesId] = { name: e.seriesName || `Show ${e.seriesId}`, ratings: [], posterPath: e.stillPath || null };
             }
-            if (e.rating > 0) showEpMap[e.seriesId].ratings.push(e.rating);
+            if (e.rating !== null) showEpMap[e.seriesId].ratings.push(e.rating);
         });
         const highestRatedShows = Object.entries(showEpMap)
             .filter(([, v]) => v.ratings.length >= 1)
@@ -264,18 +266,18 @@ export const StatsService = {
         movies.forEach(m => {
             (m.genres || []).forEach(g => {
                 genreCountMap[g] = (genreCountMap[g] || 0) + 1;
-                if (m.rating > 0) {
+                if (m.rating !== null) {
                     if (!genreRatingMap[g]) genreRatingMap[g] = [];
-                    genreRatingMap[g].push(m.rating / 2); // normalize to 5-star
+                    genreRatingMap[g].push((m.rating as number) / 2); // normalize to 5-star
                 }
             });
         });
         episodes.forEach(e => {
             (e.genres || []).forEach(g => {
                 genreCountMap[g] = (genreCountMap[g] || 0) + 1;
-                if (e.rating > 0) {
+                if (e.rating !== null) {
                     if (!genreRatingMap[g]) genreRatingMap[g] = [];
-                    genreRatingMap[g].push(e.rating);
+                    genreRatingMap[g].push(e.rating as number);
                 }
             });
         });

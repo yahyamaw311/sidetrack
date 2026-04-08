@@ -14,6 +14,7 @@ import { HistoryScreen } from '../screens/HistoryScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { WrappedScreen } from '../screens/WrappedScreen';
 import { SearchResult } from '../types';
+import { NetworkBanner } from '../components/NetworkBanner';
 
 type TabRoute = 'Explore' | 'Watchlist' | 'Log' | 'You';
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -31,6 +32,10 @@ export const MainNavigation = () => {
 
   // Detail transition animation
   const detailAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    return () => detailAnim.stopAnimation();
+  }, [detailAnim]);
 
   // Navigation history stack for back button
   const navHistory = useRef<Array<{ tab: TabRoute; show: SearchResult | null }>>([]);
@@ -93,7 +98,19 @@ export const MainNavigation = () => {
   }, [activeTab, selectedShow]);
 
   const handleTabChange = (tab: TabRoute) => {
-    if (tab === activeTab && !selectedShow) return;
+    if (tab === activeTab) {
+      navHistory.current = [];
+      if (visibleDetail) {
+        animateDetailOut();
+      }
+      if (tab === 'Explore') {
+        while (discoveryBackRef.current && discoveryBackRef.current()) {}
+      } else if (tab === 'Log') {
+        while (historyBackRef.current && historyBackRef.current()) {}
+      }
+      return;
+    }
+
     // Lazy-mount the tab on first visit
     setMountedTabs(prev => {
       if (prev.has(tab)) return prev;
@@ -102,13 +119,14 @@ export const MainNavigation = () => {
       return next;
     });
     if (visibleDetail) {
-      animateDetailOut(() => setActiveTab(tab));
+      animateDetailOut(() => {
+        setActiveTab(tab);
+        setSelectedShow(null);
+      });
       return;
     }
     setActiveTab(tab);
-    if (tab !== 'Explore') {
-      setSelectedShow(null);
-    }
+    setSelectedShow(null);
   };
 
   const handleSelectShow = (show: SearchResult) => {
@@ -233,6 +251,7 @@ export const MainNavigation = () => {
 
   return (
     <View style={styles.container}>
+      <NetworkBanner />
       {/* Tab screens — lazy mounted, each wrapped in its own ErrorBoundary */}
       <View style={[styles.tabScreen, activeTab !== 'Explore' && styles.tabScreenHidden]}>
         <ErrorBoundary fallbackLabel="Explore">
@@ -279,7 +298,7 @@ export const MainNavigation = () => {
           <ErrorBoundary fallbackLabel={visibleDetail.media_type === 'movie' ? 'Movie Detail' : 'Show Detail'}>
             {visibleDetail.media_type === 'movie'
               ? <MovieDetail route={{ params: { movieId: visibleDetail.id } }} onBack={handleBack} />
-              : <EpisodeDetail route={{ params: { tvId: visibleDetail.id, seasonNumber: 1, episodeNumber: 1 } }} onBack={handleBack} />
+              : <EpisodeDetail route={{ params: { tvId: visibleDetail.id, seasonNumber: undefined, episodeNumber: undefined } }} onBack={handleBack} />
             }
           </ErrorBoundary>
         </Animated.View>

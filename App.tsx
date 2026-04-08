@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { View, StyleSheet, StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
@@ -15,11 +15,12 @@ import {
 } from '@expo-google-fonts/inter';
 import { MainNavigation } from './src/navigation/MainNavigation';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
-import { NetworkBanner } from './src/components/NetworkBanner';
+import { GDPRConsentModal } from './src/components/GDPRConsentModal';
+import { ApiKeyModal } from './src/components/ApiKeyModal';
 import { NetworkProvider } from './src/contexts/NetworkContext';
 import { ErrorNotifierProvider } from './src/contexts/ErrorNotifier';
-import { OnboardingOverlay } from './src/components/OnboardingOverlay';
 import { StorageProvider } from './src/services/StorageProvider';
+import { DetailCache } from './src/services/DetailCache';
 import { useAppStore } from './src/store/appStore';
 import { COLORS } from './src/constants/theme';
 
@@ -36,27 +37,30 @@ export default function App() {
     Inter_600SemiBold,
   });
 
-  const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
+  const hydrated = useAppStore(s => s.hydrated);
+
 
   useEffect(() => {
-    // Check onboarding, trigger storage optimization, and hydrate the store
-    Promise.all([
-      StorageProvider.hasCompletedOnboarding(),
-      StorageProvider.migrateToPartitionedStorage(),
-    ]).then(async ([completed]) => {
-      setShowOnboarding(!completed);
+    let cancelled = false;
+    // Trigger storage optimization and hydrate the store
+    StorageProvider.migrateToPartitionedStorage().then(async () => {
+      if (cancelled) return;
+      // Prune stale/excess detail cache entries from prior sessions
+      await DetailCache.pruneStaleEntries();
+      if (cancelled) return;
       // Hydrate the centralized store after migration is complete
       await useAppStore.getState().hydrate();
     });
+    return () => { cancelled = true; };
   }, []);
 
   const onLayoutRootView = useCallback(async () => {
-    if (fontsLoaded) {
+    if (fontsLoaded && hydrated) {
       await SplashScreen.hideAsync();
     }
-  }, [fontsLoaded]);
+  }, [fontsLoaded, hydrated]);
 
-  if (!fontsLoaded) {
+  if (!fontsLoaded || !hydrated) {
     return null;
   }
 
@@ -67,11 +71,9 @@ export default function App() {
           <ErrorBoundary>
             <View style={styles.container} onLayout={onLayoutRootView}>
               <StatusBar barStyle="light-content" backgroundColor={COLORS.background} translucent={false} />
-              <NetworkBanner />
               <MainNavigation />
-              {showOnboarding && (
-                <OnboardingOverlay onComplete={() => setShowOnboarding(false)} />
-              )}
+              <GDPRConsentModal />
+              <ApiKeyModal />
             </View>
           </ErrorBoundary>
         </ErrorNotifierProvider>

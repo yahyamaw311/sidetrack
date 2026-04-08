@@ -7,19 +7,18 @@ import {
   TextInput,
   LayoutAnimation,
   RefreshControl,
-  Modal,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../constants/theme';
+import { COLORS, SPACING } from '../constants/theme';
 import { StorageProvider } from '../services/StorageProvider';
 
 import { WatchedEpisodeModal } from '../components/WatchedEpisodeModal';
 import { Snackbar, SnackbarConfig } from '../components/Snackbar';
 import { WatchedEpisode, Episode } from '../types';
-import { AddWatchedScreen } from './AddWatchedScreen';
 
-import { useHistoryData, UnifiedItem } from '../hooks/useHistoryData';
+import { useHistoryData, UnifiedItem, HistoryMediaType, HistorySortBy } from '../hooks/useHistoryData';
 import { HistorySkeleton } from '../components/history/HistorySkeletons';
 import {
   HistoryMovieRow,
@@ -45,8 +44,6 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
   onNavigateToExplore
 }) => {
   const {
-    movies,
-    episodes,
     loading,
     refreshing,
     searchQuery,
@@ -59,24 +56,31 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
     selectedShow,
     selectedShowEpisodes,
     unifiedItems,
+    hasMore,
+    loadMore,
+    totalCount,
     handleRefresh,
     handleRemoveMovie,
     handleRemoveEpisode,
     drillIntoShow,
     drillBack,
-    loadHistory,
-    fetchAndSetHistoryData
+    fetchAndSetHistoryData,
+    deletingIds,
+    sortBy,
+    setSortBy,
+    filterMediaType,
+    setFilterMediaType,
+    filterGenre,
+    setFilterGenre,
+    allAvailableGenres,
   } = useHistoryData();
-
-  // Add Movie Modal state
-  const [addModalVisible, setAddModalVisible] = useState(false);
 
   // Edit episode modal state
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editEpisode, setEditEpisode] = useState<Episode | null>(null);
   const [editShow, setEditShow] = useState<{ name: string } | null>(null);
   const [editInitialData, setEditInitialData] = useState<{
-    rating?: number; liked?: boolean; review?: string; tags?: string;
+    rating?: number | null; liked?: boolean; review?: string; tags?: string;
     rewatch?: boolean; noSpoilers?: boolean; watchedDate?: Date;
   } | null>(null);
   const [editWatchedEntry, setEditWatchedEntry] = useState<WatchedEpisode | null>(null);
@@ -103,10 +107,9 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
     return () => { onBackRef?.(null); };
   }, [tvLevel, onBackRef, drillBack]);
 
-  const totalCount = movies.length + episodes.length;
   const query = searchQuery.trim().toLowerCase();
 
-  const renderUnifiedItem = ({ item }: { item: UnifiedItem }) => {
+  const renderUnifiedItem = useCallback(({ item }: { item: UnifiedItem }) => {
     if (item.type === 'movie') {
       return (
         <HistoryMovieRow
@@ -114,6 +117,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
           onSelectMovie={onSelectMovie}
           onRemoveMovie={handleRemoveMovie}
           favoriteMovieIds={favoriteMovieIds}
+          isLoading={deletingIds.has(`movie_${item.data.movieId}_${item.data.watchedDate}`)}
         />
       );
     }
@@ -123,7 +127,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
         drillIntoShow={drillIntoShow}
       />
     );
-  };
+  }, [onSelectMovie, handleRemoveMovie, favoriteMovieIds, deletingIds, drillIntoShow]);
 
   const openEpisodeEdit = useCallback((item: WatchedEpisode) => {
     const ep: Episode = {
@@ -153,7 +157,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
   }, []);
 
   const handleConfirmEpisodeEdit = useCallback(async (data: {
-    rating: number; liked: boolean; review: string; tags: string;
+    rating: number | null; liked: boolean; review: string; tags: string;
     rewatch: boolean; noSpoilers: boolean; watchedDate: Date;
   }) => {
     if (!editWatchedEntry) return;
@@ -238,12 +242,14 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
                 onRemoveEpisode={handleRemoveEpisode}
                 openEpisodeEdit={openEpisodeEdit}
                 favoriteEpisodeIds={favoriteEpisodeIds}
+                isLoading={deletingIds.has(`episode_${item.episodeId}`)}
               />
             )}
-            keyExtractor={item => `ep_${item.episodeId}`}
+            keyExtractor={item => `ep_${item.episodeId}_${item.watchedDate}`}
             contentContainerStyle={styles.list}
             showsVerticalScrollIndicator={false}
             keyboardDismissMode="on-drag"
+            getItemLayout={(_, index) => ({ length: 64, offset: 64 * index, index })}
           />
         </View>
         <WatchedEpisodeModal
@@ -271,15 +277,6 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
           )}
           <View style={{ flex: 1 }} />
           <TouchableOpacity
-            onPress={() => setAddModalVisible(true)}
-            style={styles.favFilterBtn}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="Add watched movie"
-          >
-            <Ionicons name="add" size={20} color={COLORS.text.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity
             onPress={() => {
               LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
               setShowFavoritesOnly(!showFavoritesOnly);
@@ -297,6 +294,84 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
             />
           </TouchableOpacity>
         </View>
+
+
+        {/* Filters and Sorts */}
+        {!searchQuery.trim() && tvLevel === 'shows' && (
+          <View style={styles.filterContainer}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+              {/* Media Type Filter */}
+              {(['all', 'movie', 'show'] as HistoryMediaType[]).map(type => (
+                <TouchableOpacity
+                  key={type}
+                  style={[styles.filterChip, filterMediaType === type && styles.filterChipActive]}
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setFilterMediaType(type);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.filterChipText, filterMediaType === type && styles.filterChipTextActive]}>
+                    {type === 'all' ? 'All' : type === 'movie' ? 'Movies' : 'Shows'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+
+              <View style={styles.filterDivider} />
+
+              {/* Sort By */}
+              {(['date', 'rating', 'title'] as HistorySortBy[]).map(sort => (
+                <TouchableOpacity
+                  key={sort}
+                  style={[styles.filterChip, sortBy === sort && styles.filterChipActive]}
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setSortBy(sort);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name={sort === 'date' ? 'calendar-outline' : sort === 'rating' ? 'star-outline' : 'text-outline'}
+                    size={12}
+                    color={sortBy === sort ? COLORS.primary : COLORS.text.muted}
+                  />
+                  <Text style={[styles.filterChipText, sortBy === sort && styles.filterChipTextActive]}>
+                    {sort.charAt(0).toUpperCase() + sort.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            {/* Genre Filter Scroll */}
+            {allAvailableGenres.length > 0 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.filterScroll, { marginTop: SPACING.s }]}>
+                <TouchableOpacity
+                  style={[styles.filterChip, !filterGenre && styles.filterChipActive]}
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setFilterGenre(null);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.filterChipText, !filterGenre && styles.filterChipTextActive]}>All Genres</Text>
+                </TouchableOpacity>
+                {allAvailableGenres.map(genre => (
+                  <TouchableOpacity
+                    key={genre}
+                    style={[styles.filterChip, filterGenre === genre && styles.filterChipActive]}
+                    onPress={() => {
+                      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                      setFilterGenre(genre);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.filterChipText, filterGenre === genre && styles.filterChipTextActive]}>{genre}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        )}
 
         <View style={styles.searchWrap}>
           <Ionicons name="search" size={16} color={COLORS.text.muted} style={styles.searchIcon} />
@@ -352,6 +427,8 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
             contentContainerStyle={styles.list}
             showsVerticalScrollIndicator={false}
             keyboardDismissMode="on-drag"
+            onEndReached={hasMore ? loadMore : undefined}
+            onEndReachedThreshold={0.5}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -371,9 +448,6 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
         onConfirm={handleConfirmEpisodeEdit}
         initialData={editInitialData}
       />
-      <Modal visible={addModalVisible} animationType="slide" onRequestClose={() => setAddModalVisible(false)}>
-        <AddWatchedScreen onClose={() => { setAddModalVisible(false); loadHistory(); }} />
-      </Modal>
       <Snackbar config={snackbar} onDismiss={() => setSnackbar(null)} />
     </SafeAreaView>
   );

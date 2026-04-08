@@ -16,6 +16,11 @@ const STORAGE_KEYS = {
   ONBOARDING_COMPLETE: '@sidetrack_onboarding_complete',
   WATCHED_V2_PREFIX: '@sidetrack_watched_v2:',
   PARTITION_MIGRATED: '@sidetrack_partition_migrated',
+  CONSENT_GIVEN: '@sidetrack_consent_given',
+  TMDB_API_KEY: '@tmdb_api_key',
+  TRENDING_TV: '@cache_trending_tv',
+  TRENDING_MOVIE: '@cache_trending_movie',
+  TOP_RATED_MOVIE: '@cache_top_rated_movie',
 };
 
 // --- Helper to get parsed JSON ---
@@ -209,10 +214,17 @@ export const StorageProvider = {
     let dirty = false;
     const migrated: Record<string, QueuedItem> = {};
     for (const [k, v] of Object.entries<any>(raw)) {
-      if (!k.includes('_')) {
+      let isLegacyKey = !k.includes('_');
+      if (v.seriesId !== undefined) {
+        v.itemId = v.seriesId;
+        delete v.seriesId;
+        dirty = true;
+      }
+      
+      if (isLegacyKey) {
         const type = v.itemType || 'tv';
         v.itemType = type;
-        migrated[`${type}_${v.seriesId}`] = v;
+        migrated[`${type}_${v.itemId}`] = v;
         dirty = true;
       } else {
         migrated[k] = v;
@@ -227,16 +239,16 @@ export const StorageProvider = {
   addToWatchlist: async (item: QueuedItem) => {
     return withMutex(async () => {
       const watchlist = await StorageProvider._migrateWatchlist();
-      watchlist[`${item.itemType}_${item.seriesId}`] = item;
+      watchlist[`${item.itemType}_${item.itemId}`] = item;
       await setData(STORAGE_KEYS.WATCHLIST, watchlist);
 
     });
   },
 
-  removeFromWatchlist: async (seriesId: number, itemType: 'tv' | 'movie' = 'tv') => {
+  removeFromWatchlist: async (itemId: number, itemType: 'tv' | 'movie' = 'tv') => {
     return withMutex(async () => {
       const watchlist = await StorageProvider._migrateWatchlist();
-      delete watchlist[`${itemType}_${seriesId}`];
+      delete watchlist[`${itemType}_${itemId}`];
       await setData(STORAGE_KEYS.WATCHLIST, watchlist);
     });
   },
@@ -316,8 +328,8 @@ export const StorageProvider = {
       const watched = await getData<Record<string, WatchedMovie>>(STORAGE_KEYS.WATCHED_MOVIES, {});
       let dirty = false;
       for (const key in watched) {
-        if (watched[key].rating > 5) {
-          watched[key].rating = watched[key].rating / 2;
+        if (watched[key].rating !== null && watched[key].rating > 5) {
+          watched[key].rating = watched[key].rating! / 2;
           dirty = true;
         }
       }
@@ -444,5 +456,68 @@ export const StorageProvider = {
     } catch (e) {
       console.error('Error saving onboarding flag', e);
     }
+  },
+
+  // --- External API Consent ---
+
+  hasGivenConsent: async (): Promise<boolean | null> => {
+    try {
+      const value = await AsyncStorage.getItem(STORAGE_KEYS.CONSENT_GIVEN);
+      if (value === null) return null;
+      return value === 'true';
+    } catch {
+      return null;
+    }
+  },
+
+  setConsentGiven: async (given: boolean) => {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.CONSENT_GIVEN, given ? 'true' : 'false');
+    } catch (e) {
+      console.error('Error saving consent flag', e);
+    }
+  },
+
+  getTmdbApiKey: async (): Promise<string | null> => {
+    try {
+      return await AsyncStorage.getItem(STORAGE_KEYS.TMDB_API_KEY);
+    } catch {
+      return null;
+    }
+  },
+
+  setTmdbApiKey: async (key: string): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.TMDB_API_KEY, key);
+    } catch (error) {
+      console.error('Failed to save TMDB API Key', error);
+      throw error;
+    }
+  },
+
+  // --- Discovery Caching (Offline) ---
+
+  getTrendingCache: async (): Promise<SearchResult[]> => {
+    return await getData<SearchResult[]>(STORAGE_KEYS.TRENDING_TV, []);
+  },
+
+  setTrendingCache: async (data: SearchResult[]) => {
+    await setData(STORAGE_KEYS.TRENDING_TV, data);
+  },
+
+  getTrendingMovieCache: async (): Promise<SearchResult[]> => {
+    return await getData<SearchResult[]>(STORAGE_KEYS.TRENDING_MOVIE, []);
+  },
+
+  setTrendingMovieCache: async (data: SearchResult[]) => {
+    await setData(STORAGE_KEYS.TRENDING_MOVIE, data);
+  },
+
+  getTopRatedMovieCache: async (): Promise<SearchResult[]> => {
+    return await getData<SearchResult[]>(STORAGE_KEYS.TOP_RATED_MOVIE, []);
+  },
+
+  setTopRatedMovieCache: async (data: SearchResult[]) => {
+    await setData(STORAGE_KEYS.TOP_RATED_MOVIE, data);
   },
 };

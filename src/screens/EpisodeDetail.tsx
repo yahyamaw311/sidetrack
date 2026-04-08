@@ -11,16 +11,17 @@ import { WatchedEpisodeModal } from '../components/WatchedEpisodeModal';
 import { SeasonBrowser } from '../components/SeasonBrowser';
 import { Snackbar } from '../components/Snackbar';
 import { EpisodeDetailSkeleton } from '../components/episode/EpisodeDetailSkeleton';
+import { CreditList } from '../components/CreditList';
 import { useEpisodeDetail } from '../hooks/useEpisodeDetail';
 import { styles } from './EpisodeDetail.styles';
 
 interface EpisodeDetailProps {
-  route?: { params: { tvId: number; seasonNumber: number; episodeNumber: number } };
+  route?: { params: { tvId: number; seasonNumber?: number; episodeNumber?: number } };
   onBack?: () => void;
 }
 
 export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) => {
-  const { tvId, seasonNumber: initialSeason, episodeNumber: initialEpisode } = route?.params || { tvId: 1399, seasonNumber: 1, episodeNumber: 1 };
+  const { tvId, seasonNumber: initialSeason, episodeNumber: initialEpisode } = route?.params || { tvId: 1399 };
   const { width, height } = useWindowDimensions();
 
   const {
@@ -83,7 +84,7 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
     return <EpisodeDetailSkeleton onBack={onBack} />;
   }
 
-  if (loadError || !episode || !show) {
+  if (loadError || !show) {
     return (
       <View style={styles.container}>
         <View style={styles.centered}>
@@ -129,7 +130,7 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
           <>
             {/* Full-bleed backdrop */}
             <ImageBackground
-              source={tmdbService.getImageSource(episode.still_path || show.backdrop_path, 'w780')}
+              source={tmdbService.getImageSource(episode?.still_path || show.backdrop_path || show.poster_path, 'w780')}
               style={[styles.backdrop, { height: height * CONFIG.LAYOUT.BACKDROP_HEIGHT_RATIO_LOW }]}
             >
               <LinearGradient
@@ -142,16 +143,16 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
             {/* Content */}
             <View style={styles.content}>
               {/* Title */}
-              <Text style={styles.title}>{episode.name}</Text>
-              <Text style={styles.showName}>{show.name}</Text>
+              <Text style={styles.title}>{show.name}</Text>
+              {episode && <Text style={styles.showName}>{episode.name}</Text>}
 
               {/* Meta line */}
               <View style={styles.metaRow}>
-                <Text style={styles.metaText}>{episode.air_date}</Text>
-                {formatRuntime(episode.runtime) && (
+                <Text style={styles.metaText}>{episode?.air_date || show.first_air_date?.split('-')[0]}</Text>
+                {formatRuntime(episode?.runtime) && (
                   <>
                     <View style={styles.metaDot} />
-                    <Text style={styles.metaText}>{formatRuntime(episode.runtime)}</Text>
+                    <Text style={styles.metaText}>{formatRuntime(episode!.runtime)}</Text>
                   </>
                 )}
               </View>
@@ -206,8 +207,22 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
               {/* Overview */}
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>ABOUT</Text>
-                <Text style={styles.overview}>{episode.overview || 'No overview available.'}</Text>
+                <Text style={styles.overview}>{episode?.overview || show.overview || 'No overview available.'}</Text>
               </View>
+
+              {/* Credits */}
+              {episode?.credits ? (
+                <CreditList 
+                  cast={episode.credits.cast} 
+                  crew={episode.credits.crew} 
+                  guestStars={episode.guest_stars}
+                />
+              ) : show.credits ? (
+                <CreditList 
+                  cast={show.credits.cast} 
+                  crew={show.credits.crew}
+                />
+              ) : null}
 
               {/* Show Info */}
               <View style={styles.section}>

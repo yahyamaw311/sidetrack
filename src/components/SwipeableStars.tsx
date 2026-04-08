@@ -10,7 +10,7 @@ const STAR_COUNT = 5;
 const STAR_TOTAL_WIDTH = STAR_COUNT * STAR_SIZE + (STAR_COUNT - 1) * STAR_GAP;
 
 interface SwipeableStarsProps {
-    value: number;
+    value: number | null;
     onChange: (val: number) => void;
 }
 
@@ -58,13 +58,14 @@ export const SwipeableStars: React.FC<SwipeableStarsProps> = ({ value, onChange 
 
     const renderStar = (index: number) => {
         const starNum = index + 1;
+        const val = value !== null ? value : 0;
         let name: 'star' | 'star-half' | 'star-outline' = 'star-outline';
-        if (value >= starNum) {
+        if (val >= starNum) {
             name = 'star';
-        } else if (value >= starNum - 0.5) {
+        } else if (val >= starNum - 0.5) {
             name = 'star-half';
         }
-        const filled = value >= starNum - 0.5;
+        const filled = val >= starNum - 0.5;
         return (
             <Ionicons
                 key={index}
@@ -81,9 +82,9 @@ export const SwipeableStars: React.FC<SwipeableStarsProps> = ({ value, onChange 
             style={{ flexDirection: 'row', gap: STAR_GAP }}
             {...panResponder.panHandlers}
             accessibilityRole="adjustable"
-            accessibilityLabel={`Star rating, ${value} out of 5`}
+            accessibilityLabel={`Star rating, ${value ?? 'Unrated'} out of 5`}
             accessibilityHint="Swipe or tap to set rating"
-            accessibilityValue={{ min: 0, max: 5, now: value }}
+            accessibilityValue={{ min: 0, max: 5, now: value ?? 0 }}
         >
             {[0, 1, 2, 3, 4].map(renderStar)}
         </View>

@@ -53,8 +53,9 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
 
   const {
     query, results, searchActive, setSearchActive, searching, searchHistory,
-    selectedGenre, genreResults, genreLoading, handleSearch, clearSearch,
-    handleGenreSelect, removeHistoryItem, clearAllHistory
+    selectedGenre, genreResults, genreLoading, isLoadingMore,
+    handleSearch, loadMoreSearchResults, clearSearch,
+    handleGenreSelect, loadMoreGenreResults, removeHistoryItem, clearAllHistory
   } = useSearch();
 
   const { spotlightWidth, posterWidth } = useDiscoveryDimensions();
@@ -89,7 +90,7 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
   const spotlight = trending.slice(0, CONFIG.LIMITS.SPOTLIGHT_LIMIT);
   const popular = trending.slice(CONFIG.LIMITS.SPOTLIGHT_LIMIT);
 
-  const renderSpotlightItem = ({ item }: { item: SearchResult }) => (
+  const renderSpotlightItem = useCallback(({ item }: { item: SearchResult }) => (
     <TouchableOpacity
       onPress={() => onSelectShow(item)}
       activeOpacity={0.8}
@@ -118,9 +119,9 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
         </View>
       </LinearGradient>
     </TouchableOpacity>
-  );
+  ), [onSelectShow, spotlightWidth]);
 
-  const renderPosterItem = ({ item }: { item: SearchResult }) => (
+  const renderPosterItem = useCallback(({ item }: { item: SearchResult }) => (
     <TouchableOpacity
       onPress={() => onSelectShow(item)}
       activeOpacity={0.8}
@@ -138,9 +139,9 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
         {item.name || item.title}
       </Text>
     </TouchableOpacity>
-  );
+  ), [onSelectShow, posterWidth]);
 
-  const renderSearchResult = ({ item }: { item: SearchResult }) => (
+  const renderSearchResult = useCallback(({ item }: { item: SearchResult }) => (
     <TouchableOpacity
       onPress={() => handleSelectFromSearch(item)}
       activeOpacity={0.7}
@@ -164,9 +165,9 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
         </View>
       </View>
     </TouchableOpacity>
-  );
+  ), [handleSelectFromSearch]);
 
-  const handleRemoveCW = async (item: CurrentlyWatchingItem) => {
+  const handleRemoveCW = useCallback(async (item: CurrentlyWatchingItem) => {
     Alert.alert(
       "Remove Show",
       `Remove "${item.name}" from Currently Watching?`,
@@ -179,9 +180,9 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
         }
       ]
     );
-  };
+  }, [storeRemoveFromCW]);
 
-  const renderCurrentlyWatchingItem = ({ item }: { item: CurrentlyWatchingItem }) => (
+  const renderCurrentlyWatchingItem = useCallback(({ item }: { item: CurrentlyWatchingItem }) => (
     <TouchableOpacity
       key={`cw-${item.seriesId}`}
       onPress={() => onSelectShow({ id: item.seriesId, media_type: 'tv', name: item.name, poster_path: item.posterPath } as SearchResult)}
@@ -201,7 +202,7 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
         {item.name}
       </Text>
     </TouchableOpacity>
-  );
+  ), [onSelectShow, handleRemoveCW, posterWidth]);
 
   if (loading && trending.length === 0 && topRated.length === 0) {
     return (
@@ -319,6 +320,9 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
             contentContainerStyle={styles.searchList}
             showsVerticalScrollIndicator={false}
             keyboardDismissMode="on-drag"
+            onEndReached={loadMoreSearchResults}
+            onEndReachedThreshold={0.5}
+            ListFooterComponent={isLoadingMore ? <View style={{ padding: SPACING.l, alignItems: 'center' }}><ActivityIndicator color={COLORS.primary} /></View> : null}
             ListEmptyComponent={
               loading || searching ? (
                 <PopcornLoader />
@@ -362,6 +366,7 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
                 initialNumToRender={2}
                 windowSize={3}
                 maxToRenderPerBatch={2}
+                getItemLayout={(_, index) => ({ length: spotlightWidth + SPACING.s, offset: (spotlightWidth + SPACING.s) * index, index })}
               />
             </View>
 
@@ -382,6 +387,7 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
                   initialNumToRender={3}
                   windowSize={3}
                   maxToRenderPerBatch={3}
+                  getItemLayout={(_, index) => ({ length: posterWidth + SPACING.s, offset: (posterWidth + SPACING.s) * index, index })}
                 />
               </View>
             )}
@@ -401,6 +407,7 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
                 contentContainerStyle={styles.posterList}
                 initialNumToRender={4}
                 windowSize={3}
+                getItemLayout={(_, index) => ({ length: posterWidth + SPACING.s, offset: (posterWidth + SPACING.s) * index, index })}
               />
             </View>
 
@@ -419,6 +426,7 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
                 contentContainerStyle={styles.posterList}
                 initialNumToRender={4}
                 windowSize={3}
+                getItemLayout={(_, index) => ({ length: posterWidth + SPACING.s, offset: (posterWidth + SPACING.s) * index, index })}
               />
             </View>
 
@@ -452,7 +460,7 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
                   </View>
                 ) : genreResults.length > 0 ? (
                   <FlatList
-                    data={genreResults.slice(0, CONFIG.LIMITS.TRENDING_SLICE_LIMIT)}
+                    data={genreResults}
                     renderItem={renderPosterItem}
                     keyExtractor={(item) => `genre-r-${item.id}`}
                     horizontal
@@ -460,6 +468,10 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
                     contentContainerStyle={[styles.posterList, { marginTop: SPACING.m }]}
                     initialNumToRender={4}
                     windowSize={3}
+                    onEndReached={loadMoreGenreResults}
+                    onEndReachedThreshold={0.5}
+                    ListFooterComponent={isLoadingMore ? <View style={{ justifyContent: 'center', paddingHorizontal: SPACING.m }}><ActivityIndicator color={COLORS.primary} /></View> : null}
+                    getItemLayout={(_, index) => ({ length: posterWidth + SPACING.s, offset: (posterWidth + SPACING.s) * index, index })}
                   />
                 ) : null
               )}
@@ -481,6 +493,7 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
                   contentContainerStyle={styles.posterList}
                   initialNumToRender={4}
                   windowSize={3}
+                  getItemLayout={(_, index) => ({ length: posterWidth + SPACING.s, offset: (posterWidth + SPACING.s) * index, index })}
                 />
               </View>
             )}

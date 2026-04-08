@@ -1,49 +1,20 @@
-# Sidetrack — Flaw Tracker
-
-> *Last audited: April 1, 2026*
-
-## Remaining Flaws
-
-### 🔴 Still Open
-
-| # | Flaw | Category | Severity | Fix Difficulty | Notes |
-|---|------|----------|----------|----------------|-------|
-| 12 | No data export / backup | Compliance | 🟠 High | Medium | No way to export watch history, ratings, or reviews. Device wipe = permanent data loss. |
-| 15 | No search pagination | UX / Scalability | 🟠 High | Medium | Only the first page of TMDB results is ever fetched. |
-| 20 | Rating scale inconsistency (0–5 vs 0–10) | Data Integrity | 🟠 High | Medium | User ratings are 0–5 half-star, TMDB/IMDb are 0–10. Displayed side-by-side with no normalization. |
-| 21 | NetworkBanner detects offline but changes nothing | Error | 🟠 High | Medium | Banner shows but app doesn't disable API calls, queue actions, or switch to offline mode. |
-| 24 | No genre/category browsing | UX | 🟠 High | Medium | `discoverByGenre` exists in the service but no UI consumes it. |
-| 26 | API keys embedded in JS bundle (decompilable) | Security | 🟠 High | Hard | `TMDB_API_KEY` read from env/constants and embedded in Axios config. Extractable from bundle. |
-| 46 | Cache not invalidated on pull-to-refresh | State | 🟡 Medium | Easy | Pull-to-refresh doesn't call `clearCache()` / `invalidatePrefix()` — only the Profile "Clear Cache" button does. |
-| 48 | 0 star rating is ambiguous | Validation | 🟡 Medium | Easy | No distinction between "unrated" and "rated 0 stars". Type uses `number` with no `null` option. |
-
 ### 🟡 Partially Fixed
 
-| # | Flaw | Category | Severity | Fix Difficulty | Status |
-|---|------|----------|----------|----------------|--------|
 | 9 | Zero test coverage | Code Quality | 🔴 Critical | Hard | Core services tested (Mutex, DetailCache, StorageProvider, StatsService, appStore, config, theme). **No tests** for screens, components, hooks, or tmdbService. |
-| 16 | No History pagination — all data loaded at once | Scalability | 🟠 High | Medium | Now uses `FlatList` (virtualized rendering), but all data is still loaded into memory at once from AsyncStorage. |
-| 19 | `QueuedItem.seriesId` naming collision for movies | Data Integrity | 🟠 High | Medium | Watchlist uses composite keys (`${itemType}_${seriesId}`) preventing collisions, but field is still named `seriesId` for movies — semantically wrong. |
-| 22 | API errors silently return null/[] | Error | 🟠 High | Medium | Some methods now call `notifyErrorGlobal()` (search, trending, details), but many still return silently (top rated, discover genre, season detail, episode detail, trailers, IMDb). Error objects are now sanitized. |
+
 | 23 | God components (1,000+ line screens) | Code Quality | 🟠 High | Hard | No files exceed 1,000 lines (improved), but 8+ files are 400–878 lines. `WrappedScreen` (878), `AddWatchedScreen` (572), `SeasonBrowser` (535). |
 
----
 
-## Compliance Debt (Non-Code)
-
-| Issue | Location | Severity |
-|-------|----------|----------|
 | **No data export feature** — Users cannot export their watch history, ratings, or reviews in any format. | Nowhere in codebase | 🟠 High |
-| **No privacy policy, terms of service, or data disclosure** — Required for app store submission. | Nowhere in codebase | 🟡 Medium |
-| **No GDPR-style consent flow** — App hits TMDB, IMDb GraphQL, and YouTube APIs without data collection disclosure. | `tmdbService.ts` | 🟡 Medium |
 
----
 
-## Summary
 
-| Status | Count |
-|--------|-------|
-| ✅ Fixed | 9 |
-| 🟡 Partially fixed | 5 |
-| 🔴 Still open | 8 |
-| **Total tracked** | **22** |
+when clicking on explore even after being on explore, it should redirect me to the main explore page instead of doing nothing. This is a common pattern in mobile apps where tapping the active tab resets the navigation stack to the root of that tab. Currently, if I'm on a nested screen within Explore (like MovieDetail) and tap the Explore tab again, it does nothing instead of taking me back to the main Discovery screen.
+
+
+
+search for all irrelevant code snippets or files that are not related to the above two features and remove them. This includes any code related to the Watchlist, History, WrappedScreen, and any other screens or components that are not directly involved in the Explore search functionality. The goal is to declutter the codebase and focus on implementing the new search features without distractions from unrelated code. also remove all the code that is unsuded by the app anymore, such as the AddWatchedScreen which is currently unreachable. This will help reduce maintenance overhead and potential confusion for future developers working on the codebase.
+
+when opening a tv show the details are the ones of the first episode and the overview are the ones of the first episode instead of the show. The details screen for a TV show should display the show's overall information (like the show's overview, genres, etc.) rather than defaulting to the first episode's details. Currently, when I tap on a TV show from the search results, it takes me to the EpisodeDetail screen showing the first episode's info instead of a ShowDetail screen with the show's info. This is confusing and not the expected behavior for users looking for show-level information.
+
+find all the hardcoded values in the app and put them in a file called hardcoded.md to be able to change them later.

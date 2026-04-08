@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
+import React, { useState, useMemo, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
@@ -47,11 +47,11 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
 
   const loading = !hydrated;
 
-  const handleRemove = async (seriesId: number, itemType: 'tv' | 'movie') => {
-    const key = `${itemType}_${seriesId}`;
+  const handleRemove = useCallback(async (itemId: number, itemType: 'tv' | 'movie') => {
+    const key = `${itemType}_${itemId}`;
     setDeletingIds(prev => new Set(prev).add(key));
     try {
-      await storeRemoveFromWatchlist(seriesId, itemType);
+      await storeRemoveFromWatchlist(itemId, itemType);
       await new Promise(resolve => setTimeout(resolve, CONFIG.TIMING.PULL_TO_REFRESH_DELAY));
     } finally {
       setDeletingIds(prev => {
@@ -60,21 +60,24 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
         return next;
       });
     }
-  };
+  }, [storeRemoveFromWatchlist]);
 
   const formatDate = (isoDate: string) => {
     const date = new Date(isoDate);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  const renderItem = ({ item }: { item: QueuedItem }) => {
-    const key = `${item.itemType || 'tv'}_${item.seriesId}`;
+  const renderItem = useCallback(({ item }: { item: QueuedItem }) => {
+    const key = `${item.itemType || 'tv'}_${item.itemId}`;
     const isDeleting = deletingIds.has(key);
     return (
-      <SwipeableRow onDelete={() => handleRemove(item.seriesId, item.itemType || 'tv')}>
+      <SwipeableRow 
+        onDelete={() => handleRemove(item.itemId, item.itemType || 'tv')}
+        isLoading={isDeleting}
+      >
         <View>
           <TouchableOpacity
-            onPress={() => onSelectShow(item.seriesId, item.itemType || 'tv')}
+            onPress={() => onSelectShow(item.itemId, item.itemType || 'tv')}
             style={[styles.card, isDeleting && { opacity: 0.6 }]}
             activeOpacity={0.7}
             disabled={isDeleting}
@@ -104,15 +107,10 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
               </View>
             </View>
           </TouchableOpacity>
-          {isDeleting && (
-            <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(10, 10, 20, 0.4)', borderRadius: BORDER_RADIUS.m }]}>
-              <ActivityIndicator color={COLORS.primary} size="large" />
-            </View>
-          )}
         </View>
       </SwipeableRow>
     );
-  };
+  }, [handleRemove, onSelectShow, deletingIds]);
 
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
@@ -178,7 +176,7 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
           <FlatList
             data={filteredItems}
             renderItem={renderItem}
-            keyExtractor={(item) => item.seriesId.toString()}
+            keyExtractor={(item) => item.itemId.toString()}
             contentContainerStyle={styles.list}
             showsVerticalScrollIndicator={false}
             refreshControl={
@@ -189,6 +187,7 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
                 colors={[COLORS.primary]}
               />
             }
+            getItemLayout={(_, index) => ({ length: 128, offset: 128 * index, index })}
           />
         )}
       </SafeAreaView>

@@ -194,7 +194,45 @@ export const styles = StyleSheet.create({
   favFilterBtnActive: {
     backgroundColor: COLORS.primaryMuted,
     borderColor: COLORS.primary,
-  }
+  },
+  filterContainer: {
+    paddingVertical: SPACING.xs,
+    marginBottom: SPACING.s,
+  },
+  filterScroll: {
+    paddingHorizontal: SPACING.m,
+    gap: SPACING.s,
+    alignItems: 'center',
+  },
+  filterChip: {
+    paddingHorizontal: SPACING.m,
+    paddingVertical: 6,
+    borderRadius: BORDER_RADIUS.round,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  filterChipActive: {
+    backgroundColor: COLORS.primaryMuted,
+    borderColor: COLORS.primary,
+  },
+  filterChipText: {
+    color: COLORS.text.muted,
+    fontFamily: FONTS.bodyMedium,
+    fontSize: 12,
+  },
+  filterChipTextActive: {
+    color: COLORS.primary,
+  },
+  filterDivider: {
+    width: 1,
+    height: 16,
+    backgroundColor: COLORS.borderLight,
+    marginHorizontal: SPACING.xs,
+  },
 });
 
 export const wrappedStyles = StyleSheet.create({

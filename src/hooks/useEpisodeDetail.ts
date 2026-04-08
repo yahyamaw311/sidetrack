@@ -1,16 +1,22 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import * as Haptics from 'expo-haptics';
 import { tmdbService } from '../services/tmdbService';
 import { StorageProvider } from '../services/StorageProvider';
 import { DetailCache } from '../services/DetailCache';
 import { useNetwork } from '../contexts/NetworkContext';
 import { useAppStore } from '../store/appStore';
-import { Episode, TVShowDetail, WatchedEpisode } from '../types';
+import { Episode, TVShowDetail, WatchedEpisode, EpisodeDetailData } from '../types';
 import { SnackbarConfig } from '../components/Snackbar';
 
-export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpisode: number) => {
+export const useEpisodeDetail = (tvId: number, initialSeason?: number, initialEpisode?: number) => {
+  const isMounted = useRef(true);
+  useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
+
   const { isOffline } = useNetwork();
-  const [episode, setEpisode] = useState<Episode | null>(null);
+  const [episode, setEpisode] = useState<EpisodeDetailData | null>(null);
   const [show, setShow] = useState<TVShowDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -23,7 +29,7 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
   const [watchedModalVisible, setWatchedModalVisible] = useState(false);
   const [watchedEpisode, setWatchedEpisode] = useState<Episode | null>(null);
   const [editInitialData, setEditInitialData] = useState<{
-    rating?: number; liked?: boolean; review?: string; tags?: string;
+    rating?: number | null; liked?: boolean; review?: string; tags?: string;
     rewatch?: boolean; noSpoilers?: boolean; watchedDate?: Date;
   } | null>(null);
   const [snackbar, setSnackbar] = useState<SnackbarConfig | null>(null);
@@ -42,7 +48,7 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
 
   // ── Derived state from store ──
   const isInWatchlist = useMemo(
-    () => watchlist.some(item => item.seriesId === tvId && (item.itemType || 'tv') === 'tv'),
+    () => watchlist.some(item => item.itemId === tvId && (item.itemType || 'tv') === 'tv'),
     [watchlist, tvId]
   );
 
@@ -65,16 +71,17 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
 
     // Attempt network fetch
     let [seasonData, showData] = await Promise.all([
-      tmdbService.getSeasonDetails(tvId, initialSeason),
+      initialSeason !== undefined ? tmdbService.getSeasonDetails(tvId, initialSeason) : Promise.resolve(null),
       tmdbService.getTVShowDetails(tvId)
     ]);
+    if (!isMounted.current) return;
 
     // If network failed, try the offline cache
     if (!showData) {
       const cached = await DetailCache.getCachedTVShowDetail(tvId);
       if (cached) showData = cached;
     }
-    if (!seasonData) {
+    if (!seasonData && initialSeason !== undefined) {
       const cached = await DetailCache.getCachedSeasonDetail(tvId, initialSeason);
       if (cached) seasonData = cached;
     }
@@ -83,7 +90,7 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
     if (showData) {
       DetailCache.cacheTVShowDetail(tvId, showData);
     }
-    if (seasonData) {
+    if (seasonData && initialSeason !== undefined) {
       DetailCache.cacheSeasonDetail(tvId, initialSeason, seasonData);
     }
 
@@ -95,6 +102,7 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
         const showImdbId = showData.external_ids?.imdb_id;
         if (showImdbId) {
           const showRating = await tmdbService.getIMDbRating(showImdbId);
+          if (!isMounted.current) return;
           if (showRating) {
             setShowImdbRating(showRating.imdbRating);
             setShowImdbVotes(showRating.imdbVotes);
@@ -103,19 +111,22 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
 
         // Fetch trailer
         tmdbService.getTVTrailer(tvId).then((key: string | null) => {
+          if (!isMounted.current) return;
           if (key) setTrailerKey(key);
         });
       }
     }
 
-    if (seasonData) {
-      const ep = seasonData.episodes.find((e: Episode) => e.episode_number === initialEpisode);
+    if (seasonData && initialSeason !== undefined && initialEpisode !== undefined) {
+      const ep = await tmdbService.getEpisodeDetails(tvId, initialSeason, initialEpisode);
+      if (!isMounted.current) return;
       setEpisode(ep || null);
 
       if (ep) {
         // Fetch episode-specific IMDb rating (non-critical, skip if offline)
         if (!isOffline) {
           const omdb = await tmdbService.getIMDbEpisodeRating(tvId, ep.season_number, ep.episode_number);
+          if (!isMounted.current) return;
           if (omdb) {
             setImdbRating(omdb.imdbRating);
             setImdbVotes(omdb.imdbVotes);
@@ -123,9 +134,10 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
         }
       }
     }
-    if (!showData && !seasonData) {
+    if (!showData && (!seasonData && initialSeason !== undefined)) {
       setLoadError(true);
     }
+    if (!isMounted.current) return;
     if (!isRefresh) setLoading(false);
   }, [tvId, initialSeason, initialEpisode, isOffline]);
 
@@ -161,7 +173,7 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
   }, []);
 
   const handleConfirmWatched = async (data: {
-    rating: number; liked: boolean; review: string; tags: string;
+    rating: number | null; liked: boolean; review: string; tags: string;
     rewatch: boolean; noSpoilers: boolean; watchedDate: Date;
   }) => {
     if (!watchedEpisode || !show) return;
@@ -186,6 +198,7 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
     };
 
     await storeMarkEpisodeWatched(entry);
+    if (!isMounted.current) return;
 
     // Auto-add to Currently Watching
     await storeAddToCurrentlyWatching({
@@ -194,6 +207,7 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
       posterPath: show?.poster_path || null,
       lastUpdated: new Date().toISOString(),
     });
+    if (!isMounted.current) return;
 
     // Check if this was the last episode of the last season → auto-remove if fully watched
     const realSeasons = show.seasons.filter((s: any) => s.season_number > 0);
@@ -208,11 +222,13 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
         seasonMap[s.season_number] = s.episode_count;
       }
       const fullyWatched = await StorageProvider.isShowFullyWatched(tvId, seasonMap);
+      if (!isMounted.current) return;
       if (fullyWatched) {
         await storeRemoveFromCurrentlyWatching(tvId);
       }
     }
 
+    if (!isMounted.current) return;
     const isEdit = !!editInitialData;
     setWatchedModalVisible(false);
     setWatchedEpisode(null);
@@ -225,12 +241,16 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
   };
 
   const selectEpisode = async (ep: Episode) => {
-    setEpisode(ep);
+    // Fetch full episode details including credits
+    const fullEp = await tmdbService.getEpisodeDetails(tvId, ep.season_number, ep.episode_number);
+    if (!isMounted.current) return;
+    setEpisode(fullEp || (ep as EpisodeDetailData));
 
     // Fetch episode-specific IMDb rating
     setImdbRating(null);
     setImdbVotes(null);
     const omdb = await tmdbService.getIMDbEpisodeRating(tvId, ep.season_number, ep.episode_number);
+    if (!isMounted.current) return;
     if (omdb) {
       setImdbRating(omdb.imdbRating);
       setImdbVotes(omdb.imdbVotes);
@@ -244,7 +264,7 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
       await storeRemoveFromWatchlist(tvId, 'tv');
     } else {
       await storeAddToWatchlist({
-        seriesId: tvId,
+        itemId: tvId,
         name: show.name,
         posterPath: show.poster_path,
         addedDate: new Date().toISOString(),
@@ -261,11 +281,13 @@ export const useEpisodeDetail = (tvId: number, initialSeason: number, initialEpi
     }
   };
 
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
     setRefreshing(true);
+    tmdbService.clearCache();
     await loadData(true);
+    if (!isMounted.current) return;
     setRefreshing(false);
-  };
+  }, [loadData]);
 
   return {
     episode,

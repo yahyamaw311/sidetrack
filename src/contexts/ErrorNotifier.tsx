@@ -33,6 +33,7 @@ export const notifyErrorGlobal = (message: string, type: 'api' | 'storage' = 'ap
 export const ErrorNotifierProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [notifications, setNotifications] = useState<ErrorNotification[]>([]);
   const counter = useRef(0);
+  const timers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
   const notifyError = useCallback((message: string, type: 'api' | 'storage' = 'api') => {
     const id = ++counter.current;
@@ -42,9 +43,11 @@ export const ErrorNotifierProvider: React.FC<{ children: React.ReactNode }> = ({
       return [...prev.slice(-2), { id, message, type }]; // keep at most 3
     });
     // Auto-dismiss after 4s
-    setTimeout(() => {
+    const timerId = setTimeout(() => {
       setNotifications(prev => prev.filter(n => n.id !== id));
+      timers.current.delete(timerId);
     }, 4000);
+    timers.current.add(timerId);
   }, []);
 
   // Register global callback
@@ -52,6 +55,14 @@ export const ErrorNotifierProvider: React.FC<{ children: React.ReactNode }> = ({
     _globalNotify = notifyError;
     return () => { _globalNotify = null; };
   }, [notifyError]);
+
+  useEffect(() => {
+    const currentTimers = timers.current;
+    return () => {
+      currentTimers.forEach(clearTimeout);
+      currentTimers.clear();
+    };
+  }, []);
 
   const dismiss = useCallback((id: number) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
@@ -77,11 +88,13 @@ const ErrorToast: React.FC<{ notif: ErrorNotification; onDismiss: (id: number) =
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.parallel([
+    const animation = Animated.parallel([
       Animated.spring(slideAnim, { toValue: 0, damping: 20, stiffness: 200, useNativeDriver: true }),
       Animated.timing(opacityAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
-    ]).start();
-  }, []);
+    ]);
+    animation.start();
+    return () => animation.stop();
+  }, [slideAnim, opacityAnim]);
 
   const icon = notif.type === 'storage' ? 'alert-circle-outline' : 'cloud-offline-outline';
   const iconColor = notif.type === 'storage' ? COLORS.coral : '#F5C518';

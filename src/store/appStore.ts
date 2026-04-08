@@ -8,6 +8,27 @@ import {
   CurrentlyWatchingItem,
 } from '../types';
 
+/**
+ * Inserts an item into a sorted array using binary search to find the correct index.
+ * Sorting is descending by date (newest first).
+ */
+function binaryDateInsert<T extends { watchedDate: string }>(array: T[], item: T): T[] {
+  const itemTime = new Date(item.watchedDate).getTime();
+  let low = 0;
+  let high = array.length;
+
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    const midTime = new Date(array[mid].watchedDate).getTime();
+    if (midTime > itemTime) low = mid + 1;
+    else high = mid;
+  }
+
+  const next = [...array];
+  next.splice(low, 0, item);
+  return next;
+}
+
 interface AppState {
   // ── Data slices ──────────────────────────────────────────────
   watchedMovies: WatchedMovie[];
@@ -20,6 +41,10 @@ interface AppState {
   // ── Lifecycle ───────────────────────────────────────────────
   hydrated: boolean;
   hydrate: () => Promise<void>;
+  consentGiven: boolean | null;
+  setConsentGiven: (given: boolean) => Promise<void>;
+  tmdbApiKey: string | null;
+  setTmdbApiKey: (key: string) => Promise<void>;
 
   // ── Watched Movies ──────────────────────────────────────────
   addWatchedMovie: (movie: WatchedMovie) => Promise<void>;
@@ -36,11 +61,15 @@ interface AppState {
 
   // ── Watchlist ───────────────────────────────────────────────
   addToWatchlist: (item: QueuedItem) => Promise<void>;
-  removeFromWatchlist: (seriesId: number, itemType: 'tv' | 'movie') => Promise<void>;
+  removeFromWatchlist: (itemId: number, itemType: 'tv' | 'movie') => Promise<void>;
 
   // ── Currently Watching ──────────────────────────────────────
   addToCurrentlyWatching: (item: CurrentlyWatchingItem) => Promise<void>;
   removeFromCurrentlyWatching: (seriesId: number) => Promise<void>;
+
+  // ── Network Status ──────────────────────────────────────────
+  isOffline: boolean;
+  setIsOffline: (isOffline: boolean) => void;
 }
 
 export const useAppStore = create<AppState>()((set, get) => ({
@@ -52,35 +81,52 @@ export const useAppStore = create<AppState>()((set, get) => ({
   favoriteEpisodeIds: new Set<number>(),
   currentlyWatching: [],
   hydrated: false,
+  consentGiven: null,
+  tmdbApiKey: null,
+  isOffline: false,
+
+  setIsOffline: (isOffline: boolean) => set({ isOffline }),
 
   // ── Hydrate from AsyncStorage ───────────────────────────────
   hydrate: async () => {
-    const [movies, episodes, watchlist, favMovies, favEpisodeIds, cw] = await Promise.all([
+    const [movies, episodes, watchlist, favMovies, favEpisodeIds, cw, consentGiven, apiKey] = await Promise.all([
       StorageProvider.getWatchedMovies(),
       StorageProvider.getAllWatchedEpisodes(),
       StorageProvider.getWatchlist(),
       StorageProvider.getAllFavoriteMovies(),
       StorageProvider.getAllFavorites(),
       StorageProvider.getCurrentlyWatching(),
+      StorageProvider.hasGivenConsent(),
+      StorageProvider.getTmdbApiKey(),
     ]);
     set({
       watchedMovies: movies,
       watchedEpisodes: episodes,
       watchlist,
-      favoriteMovieIds: new Set(favMovies.map(m => m.movieId)),
+      favoriteMovieIds: new Set(favMovies.map((m: any) => m.movieId)),
       favoriteEpisodeIds: new Set(favEpisodeIds),
       currentlyWatching: cw,
       hydrated: true,
+      consentGiven,
+      tmdbApiKey: apiKey,
     });
+  },
+
+  setConsentGiven: async (given) => {
+    set({ consentGiven: given });
+    await StorageProvider.setConsentGiven(given);
+  },
+
+  setTmdbApiKey: async (key) => {
+    set({ tmdbApiKey: key });
+    await StorageProvider.setTmdbApiKey(key);
   },
 
   // ── Watched Movies ──────────────────────────────────────────
   addWatchedMovie: async (movie) => {
-    // Optimistic: add to array
+    // Optimistic: binary insertion instead of full sort
     set(s => ({
-      watchedMovies: [movie, ...s.watchedMovies].sort(
-        (a, b) => new Date(b.watchedDate).getTime() - new Date(a.watchedDate).getTime()
-      ),
+      watchedMovies: binaryDateInsert(s.watchedMovies, movie),
     }));
     try {
       await StorageProvider.addToWatchedMovies(movie);
@@ -123,13 +169,13 @@ export const useAppStore = create<AppState>()((set, get) => ({
   markEpisodeWatched: async (episode) => {
     set(s => {
       const exists = s.watchedEpisodes.some(e => e.episodeId === episode.episodeId);
-      const updated = exists
-        ? s.watchedEpisodes.map(e => e.episodeId === episode.episodeId ? episode : e)
-        : [episode, ...s.watchedEpisodes];
+      if (exists) {
+        // Remove the old entry then binary-insert the updated one at its correct sorted position
+        const without = s.watchedEpisodes.filter(e => e.episodeId !== episode.episodeId);
+        return { watchedEpisodes: binaryDateInsert(without, episode) };
+      }
       return {
-        watchedEpisodes: updated.sort(
-          (a, b) => new Date(b.watchedDate).getTime() - new Date(a.watchedDate).getTime()
-        ),
+        watchedEpisodes: binaryDateInsert(s.watchedEpisodes, episode),
       };
     });
     try {
@@ -196,7 +242,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   addToWatchlist: async (item) => {
     set(s => ({
       watchlist: [item, ...s.watchlist.filter(
-        w => !(w.seriesId === item.seriesId && w.itemType === item.itemType)
+        w => !(w.itemId === item.itemId && w.itemType === item.itemType)
       )],
     }));
     try {
@@ -207,15 +253,15 @@ export const useAppStore = create<AppState>()((set, get) => ({
     }
   },
 
-  removeFromWatchlist: async (seriesId, itemType) => {
+  removeFromWatchlist: async (itemId, itemType) => {
     const prev = get().watchlist;
     set(s => ({
       watchlist: s.watchlist.filter(
-        w => !(w.seriesId === seriesId && w.itemType === itemType)
+        w => !(w.itemId === itemId && w.itemType === itemType)
       ),
     }));
     try {
-      await StorageProvider.removeFromWatchlist(seriesId, itemType);
+      await StorageProvider.removeFromWatchlist(itemId, itemType);
     } catch {
       set({ watchlist: prev });
     }

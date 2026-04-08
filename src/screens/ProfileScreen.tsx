@@ -10,6 +10,7 @@ import * as Haptics from 'expo-haptics';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
 import { StorageProvider } from '../services/StorageProvider';
 import { useAppStore } from '../store/appStore';
+import { LegalModal } from '../components/LegalModal';
 
 interface ProfileScreenProps {
   onOpenWrapped: () => void;
@@ -50,12 +51,14 @@ const WrappedCard: React.FC<{ onPress: () => void; year: number }> = ({ onPress,
   const shimmer = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.loop(
+    const animation = Animated.loop(
       Animated.sequence([
         Animated.timing(shimmer, { toValue: 1, duration: 2000, useNativeDriver: true }),
         Animated.timing(shimmer, { toValue: 0, duration: 2000, useNativeDriver: true }),
       ])
-    ).start();
+    );
+    animation.start();
+    return () => animation.stop();
   }, [shimmer]);
 
   const shimmerOpacity = shimmer.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] });
@@ -112,6 +115,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onOpenWrapped }) =
   const [watchlistCount, setWatchlistCount] = useState(0);
   const [streak, setStreak] = useState(0);
   const [loaded, setLoaded] = useState(false);
+  const [showLegal, setShowLegal] = useState(false);
 
   const loadStats = useCallback(async () => {
     const { StatsService } = await import('../services/StatsService');
@@ -245,6 +249,23 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onOpenWrapped }) =
             <WrappedCard onPress={onOpenWrapped} year={wrappedYear} />
           </View>
 
+          {/* About */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionDot} />
+              <Text style={styles.sectionTitle}>About</Text>
+            </View>
+            <View style={menuStyles.card}>
+              <MenuRow
+                icon="document-text-outline"
+                label="Legal & Privacy"
+                sublabel="Terms, privacy policy, data disclosure"
+                color={COLORS.text.secondary}
+                onPress={() => setShowLegal(true)}
+              />
+            </View>
+          </View>
+
           {/* Settings */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -274,6 +295,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onOpenWrapped }) =
           <View style={{ height: 100 }} />
         </ScrollView>
       </SafeAreaView>
+
+      <LegalModal visible={showLegal} onClose={() => setShowLegal(false)} />
     </View>
   );
 };

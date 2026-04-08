@@ -39,16 +39,26 @@ export const WrappedScreen: React.FC<WrappedScreenProps> = ({ year, onClose }) =
     const fadeAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
-        loadStats();
+        return () => fadeAnim.stopAnimation();
+    }, [fadeAnim]);
+    
+    const isMounted = useRef(true);
+    useEffect(() => {
+        isMounted.current = true;
+        return () => { isMounted.current = false; };
     }, []);
 
-    const loadStats = async () => {
-        const { StatsService } = await import('../services/StatsService');
-        const data = await StatsService.computeWrapped(year);
-        setStats(data);
-        setLoading(false);
-        Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }).start();
-    };
+    useEffect(() => {
+        const loadStatsAsync = async () => {
+            const { StatsService } = await import('../services/StatsService');
+            const data = await StatsService.computeWrapped(year);
+            if (!isMounted.current) return;
+            setStats(data);
+            setLoading(false);
+            Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }).start();
+        };
+        loadStatsAsync();
+    }, [year, fadeAnim]);
 
     const handleScroll = (event: any) => {
         const page = Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH);

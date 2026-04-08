@@ -44,15 +44,19 @@ export const Snackbar: React.FC<SnackbarProps> = ({ config, onDismiss }) => {
         // Reset & slide up from bottom
         translateY.setValue(80);
         opacity.setValue(0);
-        Animated.parallel([
+        const animation = Animated.parallel([
             Animated.spring(translateY, { toValue: 0, useNativeDriver: true, damping: 18, stiffness: 200 }),
             Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-        ]).start();
+        ]);
+        animation.start();
 
         // Auto-dismiss
         timer.current = setTimeout(hide, config.duration ?? 2200);
-        return () => { if (timer.current) clearTimeout(timer.current); };
-    }, [config]);
+        return () => { 
+            if (timer.current) clearTimeout(timer.current); 
+            animation.stop();
+        };
+    }, [config, hide, translateY, opacity]);
 
     if (!config) return null;
 

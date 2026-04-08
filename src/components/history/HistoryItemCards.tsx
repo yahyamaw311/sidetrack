@@ -33,16 +33,17 @@ interface HistoryMovieRowProps {
   onSelectMovie?: (id: number) => void;
   onRemoveMovie: (movieId: number, watchedDate: string) => void;
   favoriteMovieIds: Set<number>;
+  isLoading?: boolean;
 }
 
-export const HistoryMovieRow: React.FC<HistoryMovieRowProps> = ({ item, onSelectMovie, onRemoveMovie, favoriteMovieIds }) => (
-  <SwipeableRow onDelete={() => onRemoveMovie(item.movieId, item.watchedDate)}>
+export const HistoryMovieRow = React.memo<HistoryMovieRowProps>(({ item, onSelectMovie, onRemoveMovie, favoriteMovieIds, isLoading }) => (
+  <SwipeableRow onDelete={() => onRemoveMovie(item.movieId, item.watchedDate)} isLoading={isLoading}>
     <TouchableOpacity
       style={tvStyles.showCard}
       onPress={() => onSelectMovie?.(item.movieId)}
       activeOpacity={0.7}
       accessibilityRole="button"
-      accessibilityLabel={`${item.title}, rated ${item.rating > 0 ? item.rating.toFixed(1) : 'unrated'}, watched ${formatDate(item.watchedDate)}`}
+      accessibilityLabel={`${item.title}, rated ${item.rating !== null ? item.rating.toFixed(1) : 'unrated'}, watched ${formatDate(item.watchedDate)}`}
       accessibilityHint="Double tap to view details, swipe left to delete"
     >
       {item.posterPath ? (
@@ -62,7 +63,7 @@ export const HistoryMovieRow: React.FC<HistoryMovieRowProps> = ({ item, onSelect
           {item.releaseDate?.split('-')[0]} · {item.runtime}m
         </Text>
         <View style={tvStyles.showBottomRow}>
-          {item.rating > 0 && (
+          {item.rating !== null && (
             <View style={tvStyles.avgRatingWrap}>
               <Ionicons name="star" size={11} color={COLORS.primary} />
               <Text style={tvStyles.avgRatingText}>{item.rating.toFixed(1)}</Text>
@@ -81,17 +82,17 @@ export const HistoryMovieRow: React.FC<HistoryMovieRowProps> = ({ item, onSelect
       <Ionicons name="chevron-forward" size={16} color={COLORS.text.muted} />
     </TouchableOpacity>
   </SwipeableRow>
-);
+));
 
 interface HistoryShowCardProps {
   item: ShowGroup;
   drillIntoShow: (seriesId: number) => void;
 }
 
-export const HistoryShowCard: React.FC<HistoryShowCardProps> = ({ item, drillIntoShow }) => {
-  const ratedEps = item.episodes.filter(ep => ep.rating > 0);
+export const HistoryShowCard = React.memo<HistoryShowCardProps>(({ item, drillIntoShow }) => {
+  const ratedEps = item.episodes.filter(ep => ep.rating !== null);
   const avgRating = ratedEps.length > 0
-    ? ratedEps.reduce((sum, ep) => sum + ep.rating, 0) / ratedEps.length
+    ? ratedEps.reduce((sum, ep) => sum + (ep.rating || 0), 0) / ratedEps.length
     : 0;
   const totalEps = item.episodes.length;
   const totalSeasons = item.seasons.length;
@@ -122,7 +123,7 @@ export const HistoryShowCard: React.FC<HistoryShowCardProps> = ({ item, drillInt
           {totalSeasons} season{totalSeasons !== 1 ? 's' : ''} · {totalEps} ep{totalEps !== 1 ? 's' : ''}
         </Text>
         <View style={tvStyles.showBottomRow}>
-          {avgRating > 0 && (
+          {ratedEps.length > 0 && (
             <View style={tvStyles.avgRatingWrap}>
               <Ionicons name="star" size={11} color={COLORS.primary} />
               <Text style={tvStyles.avgRatingText}>{avgRating.toFixed(1)}</Text>
@@ -135,25 +136,25 @@ export const HistoryShowCard: React.FC<HistoryShowCardProps> = ({ item, drillInt
       <Ionicons name="chevron-forward" size={16} color={COLORS.text.muted} />
     </TouchableOpacity>
   );
-};
+});
 
 interface HistoryEpisodeRowProps {
   item: WatchedEpisode;
   onRemoveEpisode: (episodeId: number) => void;
   openEpisodeEdit: (item: WatchedEpisode) => void;
   favoriteEpisodeIds: Set<number>;
+  isLoading?: boolean;
 }
 
-export const HistoryEpisodeRow: React.FC<HistoryEpisodeRowProps> = ({ item, onRemoveEpisode, openEpisodeEdit, favoriteEpisodeIds }) => {
-  const starRating = item.rating || 0;
+export const HistoryEpisodeRow = React.memo<HistoryEpisodeRowProps>(({ item, onRemoveEpisode, openEpisodeEdit, favoriteEpisodeIds, isLoading }) => {
   return (
-    <SwipeableRow onDelete={() => onRemoveEpisode(item.episodeId)} height={64}>
+    <SwipeableRow onDelete={() => onRemoveEpisode(item.episodeId)} height={64} isLoading={isLoading}>
       <TouchableOpacity
         style={tvStyles.episodeRow}
         activeOpacity={0.7}
         onPress={() => openEpisodeEdit(item)}
         accessibilityRole="button"
-        accessibilityLabel={`S${item.seasonNumber}E${item.episodeNumber}, ${item.episodeName || `Episode ${item.episodeNumber}`}, ${starRating > 0 ? `rated ${starRating}` : 'not rated'}`}
+        accessibilityLabel={`S${item.seasonNumber}E${item.episodeNumber}, ${item.episodeName || `Episode ${item.episodeNumber}`}, ${item.rating !== null ? `rated ${item.rating}` : 'not rated'}`}
         accessibilityHint="Double tap to edit, swipe left to delete"
       >
         <View style={tvStyles.epNumberWrap}>
@@ -176,9 +177,9 @@ export const HistoryEpisodeRow: React.FC<HistoryEpisodeRowProps> = ({ item, onRe
             S{item.seasonNumber}E{item.episodeNumber} · {item.episodeName || `Episode ${item.episodeNumber}`}
           </Text>
           <View style={tvStyles.epMetaRow}>
-            {starRating > 0 ? (
+            {item.rating !== null ? (
               <View style={tvStyles.starsRow}>
-                {renderHalfStars(starRating)}
+                {renderHalfStars(item.rating)}
               </View>
             ) : (
               <Text style={tvStyles.epMetaText}>Not rated</Text>
@@ -196,4 +197,4 @@ export const HistoryEpisodeRow: React.FC<HistoryEpisodeRowProps> = ({ item, onRe
       </TouchableOpacity>
     </SwipeableRow>
   );
-};
+});

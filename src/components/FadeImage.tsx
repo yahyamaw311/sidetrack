@@ -7,7 +7,7 @@ interface FadeImageProps extends Omit<ImageProps, 'onLoad'> {
   showSkeleton?: boolean;
 }
 
-export const FadeImage: React.FC<FadeImageProps> = ({ style, showSkeleton = true, source, ...props }) => {
+export const FadeImage = React.memo<FadeImageProps>(({ style, showSkeleton = true, source, ...props }) => {
   const [loaded, setLoaded] = useState(false);
   const opacity = useRef(new Animated.Value(0)).current;
 
@@ -15,7 +15,8 @@ export const FadeImage: React.FC<FadeImageProps> = ({ style, showSkeleton = true
   useEffect(() => {
     setLoaded(false);
     opacity.setValue(0);
-  }, [source]);
+    return () => opacity.stopAnimation();
+  }, [source, opacity]);
 
   const onLoad = () => {
     setLoaded(true);
@@ -41,4 +42,4 @@ export const FadeImage: React.FC<FadeImageProps> = ({ style, showSkeleton = true
       />
     </View>
   );
-};
+});

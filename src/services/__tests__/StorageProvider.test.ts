@@ -44,7 +44,7 @@ const makeMovie = (overrides: Partial<WatchedMovie> = {}): WatchedMovie => ({
 });
 
 const makeQueuedItem = (overrides: Partial<QueuedItem> = {}): QueuedItem => ({
-  seriesId: 42,
+  itemId: 42,
   name: 'Queued Show',
   posterPath: '/poster.jpg',
   addedDate: '2025-01-10T12:00:00.000Z',
@@ -172,9 +172,9 @@ describe('StorageProvider', () => {
       expect(list).toHaveLength(0);
     });
 
-    it('separates tv and movie items with the same seriesId', async () => {
-      await StorageProvider.addToWatchlist(makeQueuedItem({ itemType: 'tv', seriesId: 1 }));
-      await StorageProvider.addToWatchlist(makeQueuedItem({ itemType: 'movie', seriesId: 1, name: 'Movie 1' }));
+    it('separates tv and movie items with the same itemId', async () => {
+      await StorageProvider.addToWatchlist(makeQueuedItem({ itemType: 'tv', itemId: 1 }));
+      await StorageProvider.addToWatchlist(makeQueuedItem({ itemType: 'movie', itemId: 1, name: 'Movie 1' }));
 
       const list = await StorageProvider.getWatchlist();
       expect(list).toHaveLength(2);

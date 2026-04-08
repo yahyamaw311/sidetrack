@@ -4,6 +4,7 @@ import Constants from 'expo-constants';
 import { TMDBResponse, SearchResult, TVShowDetail, SeasonDetail, MovieDetail, EpisodeDetailData } from '../types';
 import { notifyErrorGlobal } from '../contexts/ErrorNotifier';
 import { CONFIG } from '../constants/config';
+import { useAppStore } from '../store/appStore';
 
 /**
  * Extract a loggable summary from an error without leaking sensitive data.
@@ -29,31 +30,34 @@ function sanitizeError(error: unknown): string {
   return String(error);
 }
 
-const TMDB_API_KEY = Constants.expoConfig?.extra?.tmdbApiKey
-  || process.env.EXPO_PUBLIC_TMDB_API_KEY
-  || '';
 const BASE_URL = Constants.expoConfig?.extra?.tmdbBaseUrl || 'https://api.themoviedb.org/3';
 const IMDB_GRAPHQL_URL = Constants.expoConfig?.extra?.imdbGraphqlUrl || 'https://graphql.imdb.com';
-
-// Helper to determine auth method
-const isBearerToken = TMDB_API_KEY.length > 50;
 
 const tmdbClient = axios.create({
   baseURL: BASE_URL,
   timeout: 10000,
   headers: {
     'User-Agent': 'Sidetrack/1.0',
-    ...(isBearerToken ? {
-      Authorization: `Bearer ${TMDB_API_KEY}`,
-      'Content-Type': 'application/json',
-    } : {}),
+    'Content-Type': 'application/json',
   },
-  params: isBearerToken ? {
-    language: 'en-US',
-  } : {
-    api_key: TMDB_API_KEY,
+  params: {
     language: 'en-US',
   },
+});
+
+// Interceptor to dynamically attach the BYOK API Key
+tmdbClient.interceptors.request.use(config => {
+  const tmdbApiKey = useAppStore.getState().tmdbApiKey || '';
+  const isBearerToken = tmdbApiKey.length > 50;
+
+  if (isBearerToken) {
+    config.headers.Authorization = `Bearer ${tmdbApiKey}`;
+  } else {
+    config.params = config.params || {};
+    config.params.api_key = tmdbApiKey;
+  }
+  
+  return config;
 });
 
 // --- In-memory cache (5 min TTL, bounded by count and memory) ---
@@ -82,13 +86,45 @@ if (_prev > 0) {
   queue = [];
 }
 
-/** Rough byte-size estimate (avoids full serialisation cost) */
-function estimateSize(data: any): number {
-  try {
-    return JSON.stringify(data).length * 2; // ~2 bytes per UTF-16 char
-  } catch {
-    return CACHE_MAX_ENTRY_BYTES + 1; // treat un-serialisable data as too large
+// Periodic sweep to proactively remove expired entries (once per minute)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of cache.entries()) {
+    if (now - entry.timestamp >= CACHE_TTL) {
+      cacheBytes -= entry.size;
+      cache.delete(key);
+    }
   }
+}, 60000);
+
+/** 
+ * Rough byte-size estimate (avoids expensive full JSON.stringify serialization) 
+ * Iterates through keys/values with a depth limit to estimate memory footprint.
+ */
+function estimateSize(value: any, depth = 0): number {
+  if (value === null || value === undefined) return 8;
+  const type = typeof value;
+  if (type === 'number') return 8;
+  if (type === 'string') return value.length * 2;
+  if (type === 'boolean') return 4;
+  if (type === 'object' && depth < 10) {
+    let size = 16; // baseline for object/array overhead
+    if (Array.isArray(value)) {
+      for (let i = 0; i < Math.min(value.length, 100); i++) {
+        size += estimateSize(value[i], depth + 1);
+      }
+      // Scale if array is truncated for estimation
+      if (value.length > 100) size = (size / 100) * value.length;
+    } else {
+      for (const key in value) {
+        size += key.length * 2;
+        size += estimateSize(value[key], depth + 1);
+        if (size > CACHE_MAX_ENTRY_BYTES) break; 
+      }
+    }
+    return size;
+  }
+  return 8;
 }
 
 function getCached<T>(key: string): T | null {
@@ -176,16 +212,22 @@ export const tmdbService = {
   /**
    * Search for multi (TV, Movies)
    */
-  search: async (query: string): Promise<SearchResult[]> => {
+  search: async (query: string, page: number = 1): Promise<{ results: SearchResult[], hasNextPage: boolean }> => {
+    if (useAppStore.getState().isOffline) {
+      return { results: [], hasNextPage: false };
+    }
     try {
       const response = await tmdbClient.get<TMDBResponse<SearchResult>>('/search/multi', {
-        params: { query },
+        params: { query, page },
       });
-      return response.data.results;
+      return { 
+        results: response.data.results,
+        hasNextPage: response.data.page < response.data.total_pages
+      };
     } catch (error) {
       console.error('TMDB Search Error:', sanitizeError(error));
       notifyErrorGlobal('Search failed — check your connection', 'api');
-      return [];
+      return { results: [], hasNextPage: false };
     }
   },
 
@@ -193,6 +235,7 @@ export const tmdbService = {
    * Get Trending TV Shows
    */
   getTrending: async (): Promise<SearchResult[]> => {
+    if (useAppStore.getState().isOffline) return [];
     try {
       const response = await tmdbClient.get<TMDBResponse<SearchResult>>('/trending/tv/week');
       return response.data.results;
@@ -207,6 +250,7 @@ export const tmdbService = {
    * Get Trending Movies
    */
   getTrendingMovies: async (): Promise<SearchResult[]> => {
+    if (useAppStore.getState().isOffline) return [];
     try {
       const response = await tmdbClient.get<TMDBResponse<SearchResult>>('/trending/movie/week');
       return response.data.results;
@@ -224,6 +268,7 @@ export const tmdbService = {
     const cacheKey = 'top_rated_movies';
     const cached = getCached<SearchResult[]>(cacheKey);
     if (cached) return cached;
+    if (useAppStore.getState().isOffline) return [];
     try {
       const response = await tmdbClient.get<TMDBResponse<SearchResult>>('/movie/top_rated');
       const results = response.data.results.map(r => ({ ...r, media_type: 'movie' as const }));
@@ -231,6 +276,7 @@ export const tmdbService = {
       return results;
     } catch (error) {
       console.error('TMDB Top Rated Error:', sanitizeError(error));
+      notifyErrorGlobal('Could not load top rated movies', 'api');
       return [];
     }
   },
@@ -238,20 +284,26 @@ export const tmdbService = {
   /**
    * Discover movies by genre ID
    */
-  discoverByGenre: async (genreId: number): Promise<SearchResult[]> => {
-    const cacheKey = `discover_genre_${genreId}`;
-    const cached = getCached<SearchResult[]>(cacheKey);
+  discoverByGenre: async (genreId: number, page: number = 1): Promise<{ results: SearchResult[], hasNextPage: boolean }> => {
+    const cacheKey = `discover_genre_${genreId}_page_${page}`;
+    const cached = getCached<{ results: SearchResult[], hasNextPage: boolean }>(cacheKey);
     if (cached) return cached;
+    if (useAppStore.getState().isOffline) return { results: [], hasNextPage: false };
     try {
       const response = await tmdbClient.get<TMDBResponse<SearchResult>>('/discover/movie', {
         params: { with_genres: genreId, sort_by: 'popularity.desc' },
       });
       const results = response.data.results.map(r => ({ ...r, media_type: 'movie' as const }));
-      setCache(cacheKey, results);
-      return results;
+      const output = {
+        results,
+        hasNextPage: response.data.page < response.data.total_pages
+      };
+      setCache(cacheKey, output);
+      return output;
     } catch (error) {
       console.error('TMDB Discover Genre Error:', sanitizeError(error));
-      return [];
+      notifyErrorGlobal('Could not load genre movies', 'api');
+      return { results: [], hasNextPage: false };
     }
   },
 
@@ -262,9 +314,10 @@ export const tmdbService = {
     const cacheKey = `tv_${tvId}`;
     const cached = getCached<TVShowDetail>(cacheKey);
     if (cached) return cached;
+    if (useAppStore.getState().isOffline) return null;
     try {
       const [showResponse, externalIds] = await Promise.all([
-        tmdbClient.get<TVShowDetail>(`/tv/${tvId}`),
+        tmdbClient.get<TVShowDetail>(`/tv/${tvId}`, { params: { append_to_response: 'credits' } }),
         tmdbClient.get<{ imdb_id?: string }>(`/tv/${tvId}/external_ids`),
       ]);
       const result = { ...showResponse.data, external_ids: externalIds.data };
@@ -284,8 +337,11 @@ export const tmdbService = {
     const cacheKey = `movie_${movieId}`;
     const cached = getCached<MovieDetail>(cacheKey);
     if (cached) return cached;
+    if (useAppStore.getState().isOffline) return null;
     try {
-      const response = await tmdbClient.get<MovieDetail>(`/movie/${movieId}`);
+      const response = await tmdbClient.get<MovieDetail>(`/movie/${movieId}`, {
+        params: { append_to_response: 'credits' }
+      });
       setCache(cacheKey, response.data);
       return response.data;
     } catch (error) {
@@ -302,12 +358,14 @@ export const tmdbService = {
     const cacheKey = `season_${tvId}_${seasonNumber}`;
     const cached = getCached<SeasonDetail>(cacheKey);
     if (cached) return cached;
+    if (useAppStore.getState().isOffline) return null;
     try {
       const response = await tmdbClient.get<SeasonDetail>(`/tv/${tvId}/season/${seasonNumber}`);
       setCache(cacheKey, response.data);
       return response.data;
     } catch (error) {
       console.error(`TMDB Season Detail Error (${tvId} S${seasonNumber}):`, sanitizeError(error));
+      notifyErrorGlobal('Could not load season details', 'api');
       return null;
     }
   },
@@ -319,6 +377,7 @@ export const tmdbService = {
     const cacheKey = `ep_${tvId}_${seasonNumber}_${episodeNumber}`;
     const cached = getCached<EpisodeDetailData>(cacheKey);
     if (cached) return cached;
+    if (useAppStore.getState().isOffline) return null;
     try {
       const response = await tmdbClient.get<EpisodeDetailData>(
         `/tv/${tvId}/season/${seasonNumber}/episode/${episodeNumber}`,
@@ -328,6 +387,7 @@ export const tmdbService = {
       return response.data;
     } catch (error) {
       console.error(`TMDB Episode Detail Error (${tvId} S${seasonNumber}E${episodeNumber}):`, sanitizeError(error));
+      notifyErrorGlobal('Could not load episode details', 'api');
       return null;
     }
   },
@@ -349,6 +409,7 @@ export const tmdbService = {
     const cacheKey = `imdb_${imdbId}`;
     const cached = getCached<{ imdbRating: string; imdbVotes: string }>(cacheKey);
     if (cached) return cached;
+    if (useAppStore.getState().isOffline) return null;
     try {
       const response = await axios.post(IMDB_GRAPHQL_URL, {
         query: `query GetImdbTitle($id: ID!) { title(id: $id) { ratingsSummary { aggregateRating voteCount } } }`,
@@ -372,6 +433,7 @@ export const tmdbService = {
       return null;
     } catch (error) {
       console.error('IMDb GraphQL Error:', sanitizeError(error));
+      notifyErrorGlobal('Could not fetch IMDb ratings', 'api');
       return null;
     }
   },
@@ -387,6 +449,7 @@ export const tmdbService = {
       return response.data.imdb_id || null;
     } catch (error) {
       console.error(`TMDB Episode External IDs Error:`, sanitizeError(error));
+      notifyErrorGlobal('Could not fetch external IDs', 'api');
       return null;
     }
   },
@@ -414,6 +477,7 @@ export const tmdbService = {
     const cacheKey = `movie_trailer_${movieId}`;
     const cached = getCached<string>(cacheKey);
     if (cached) return cached;
+    if (useAppStore.getState().isOffline) return null;
     try {
       const response = await tmdbClient.get<{ results: Array<{ key: string; site: string; type: string; official: boolean }> }>(
         `/movie/${movieId}/videos`
@@ -426,6 +490,7 @@ export const tmdbService = {
       return key;
     } catch (error) {
       console.error('TMDB Movie Trailer Error:', sanitizeError(error));
+      notifyErrorGlobal('Could not load trailer', 'api');
       return null;
     }
   },
@@ -449,6 +514,7 @@ export const tmdbService = {
       return key;
     } catch (error) {
       console.error('TMDB TV Trailer Error:', sanitizeError(error));
+      notifyErrorGlobal('Could not load trailer', 'api');
       return null;
     }
   },

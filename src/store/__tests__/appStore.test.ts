@@ -8,6 +8,9 @@ jest.mock('../../services/StorageProvider', () => ({
     getAllFavoriteMovies: jest.fn().mockResolvedValue([]),
     getAllFavorites: jest.fn().mockResolvedValue([]),
     getCurrentlyWatching: jest.fn().mockResolvedValue([]),
+    hasGivenConsent: jest.fn().mockResolvedValue(true),
+    getTmdbApiKey: jest.fn().mockResolvedValue(null),
+    setTmdbApiKey: jest.fn().mockResolvedValue(undefined),
     addToWatchedMovies: jest.fn().mockResolvedValue(undefined),
     updateWatchedMovie: jest.fn().mockResolvedValue(undefined),
     removeFromWatchedMovies: jest.fn().mockResolvedValue(undefined),
@@ -195,7 +198,7 @@ describe('appStore', () => {
 
   describe('watchlist', () => {
     it('addToWatchlist adds item', async () => {
-      const item = { seriesId: 1, name: 'Show', posterPath: null, addedDate: '2026-01-01', itemType: 'tv' as const };
+      const item = { itemId: 1, name: 'Show', posterPath: null, addedDate: '2026-01-01', itemType: 'tv' as const };
       await useAppStore.getState().addToWatchlist(item);
 
       expect(useAppStore.getState().watchlist).toHaveLength(1);
@@ -204,7 +207,7 @@ describe('appStore', () => {
 
     it('removeFromWatchlist removes item', async () => {
       useAppStore.setState({
-        watchlist: [{ seriesId: 1, name: 'Show', posterPath: null, addedDate: '2026-01-01', itemType: 'tv' as const }],
+        watchlist: [{ itemId: 1, name: 'Show', posterPath: null, addedDate: '2026-01-01', itemType: 'tv' as const }],
       });
 
       await useAppStore.getState().removeFromWatchlist(1, 'tv');

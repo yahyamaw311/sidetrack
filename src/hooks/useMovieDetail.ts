@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import * as Haptics from 'expo-haptics';
 import { tmdbService } from '../services/tmdbService';
 import { DetailCache } from '../services/DetailCache';
@@ -8,9 +8,16 @@ import { MovieDetail as MovieDetailType, WatchedMovie } from '../types';
 import { SnackbarConfig } from '../components/Snackbar';
 
 export const useMovieDetail = (movieId: number) => {
+  const isMounted = useRef(true);
+  useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
+
   const { isOffline } = useNetwork();
   const [movie, setMovie] = useState<MovieDetailType | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [imdbRating, setImdbRating] = useState<string | null>(null);
   const [imdbVotes, setImdbVotes] = useState<string | null>(null);
@@ -32,7 +39,7 @@ export const useMovieDetail = (movieId: number) => {
   // ── Derived state from store ──
   const isFavorite = useMemo(() => favoriteMovieIds.has(movieId), [favoriteMovieIds, movieId]);
   const isInWatchlist = useMemo(
-    () => watchlist.some(item => item.seriesId === movieId && item.itemType === 'movie'),
+    () => watchlist.some(item => item.itemId === movieId && item.itemType === 'movie'),
     [watchlist, movieId]
   );
   const existingEntry = useMemo(
@@ -46,10 +53,12 @@ export const useMovieDetail = (movieId: number) => {
     setLoadError(false);
     if (movieId) {
       let data = await tmdbService.getMovieDetails(movieId);
+      if (!isMounted.current) return;
 
       // If network failed, try offline cache
       if (!data) {
         const cached = await DetailCache.getCachedMovieDetail(movieId);
+        if (!isMounted.current) return;
         if (cached) data = cached;
       }
 
@@ -59,11 +68,13 @@ export const useMovieDetail = (movieId: number) => {
       }
 
       setMovie(data);
+      if (!isMounted.current) return;
 
       if (data) {
         // Fetch IMDb rating (non-critical, skip if offline)
         if (!isOffline && data.imdb_id) {
           const imdb = await tmdbService.getIMDbRating(data.imdb_id);
+          if (!isMounted.current) return;
           if (imdb) {
             setImdbRating(imdb.imdbRating);
             setImdbVotes(imdb.imdbVotes);
@@ -73,6 +84,7 @@ export const useMovieDetail = (movieId: number) => {
         // Fetch trailer (non-critical, skip if offline)
         if (!isOffline) {
           tmdbService.getMovieTrailer(movieId).then(key => {
+            if (!isMounted.current) return;
             if (key) setTrailerKey(key);
           });
         }
@@ -80,6 +92,7 @@ export const useMovieDetail = (movieId: number) => {
         setLoadError(true);
       }
     }
+    if (!isMounted.current) return;
     setLoading(false);
   }, [movieId, isOffline]);
 
@@ -94,7 +107,7 @@ export const useMovieDetail = (movieId: number) => {
       await storeRemoveFromWatchlist(movieId, 'movie');
     } else {
       await storeAddToWatchlist({
-        seriesId: movieId,
+        itemId: movieId,
         name: movie.title,
         posterPath: movie.poster_path,
         addedDate: new Date().toISOString(),
@@ -122,7 +135,7 @@ export const useMovieDetail = (movieId: number) => {
   };
 
   const handleConfirmLog = async (data: {
-    rating: number;
+    rating: number | null;
     liked: boolean;
     review: string;
     tags: string;
@@ -165,9 +178,18 @@ export const useMovieDetail = (movieId: number) => {
     });
   };
 
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    tmdbService.clearCache();
+    await loadData();
+    if (!isMounted.current) return;
+    setRefreshing(false);
+  }, [loadData]);
+
   return {
     movie,
     loading,
+    refreshing,
     loadError,
     isFavorite,
     isInWatchlist,
@@ -183,6 +205,7 @@ export const useMovieDetail = (movieId: number) => {
     snackbar,
     setSnackbar,
     loadData,
+    handleRefresh,
     toggleWatchlist,
     toggleFavorite,
     openLogModal,

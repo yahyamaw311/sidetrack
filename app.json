@@ -25,6 +25,10 @@
         "foregroundImage": "./assets/logo.png",
         "backgroundColor": "#07070B"
       }
+    },
+    "ios": {
+      "bundleIdentifier": "com.yahyamaw311.sidetrack",
+      "supportsTablet": true
     }
   }
 }
