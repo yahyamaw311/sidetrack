@@ -1,29 +1,30 @@
-import React, { useEffect, useState, useRef } from 'react';
+﻿import React, { useEffect, useState, useRef } from 'react';
 import {
-    View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions,
-    ActivityIndicator, Platform, Animated,
+    View, Text, StyleSheet, ScrollView, TouchableOpacity, useWindowDimensions,
+    ActivityIndicator, Animated,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, GRADIENTS, LETTER_SPACING } from '../constants/theme';
+import { CONFIG } from '../constants/config';
 import type { WrappedStats } from '../services/StatsService';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CARD_PADDING = SPACING.l;
 
 // Card gradient palettes
 const CARD_GRADIENTS: [string, string, string][] = [
     ['#1a1a2e', '#16213e', '#0f3460'], // deep blue
-    ['#0f0c29', '#302b63', '#24243e'], // purple haze
+    GRADIENTS.wrapped,                  // purple haze
     ['#1a1a2e', '#e94560', '#533483'], // magenta burst
-    ['#0d0d0d', '#1a1a2e', '#C8A555'], // gold
-    ['#141E30', '#243B55', '#2DD4A8'], // teal
-    ['#1a1a2e', '#16213e', '#7C6AEF'], // violet
-    ['#0f0c29', '#302b63', '#EF6461'], // coral
-    ['#141E30', '#1a1a2e', '#F7A44C'], // amber
-    ['#0d0d0d', '#1a1a2e', '#2DD4A8'], // mint
-    ['#1a1a2e', '#0f3460', '#C8A555'], // navy gold
-    ['#0f0c29', '#1a1a2e', '#7C6AEF'], // deep violet
+    ['#0d0d0d', '#1a1a2e', COLORS.primary], // gold
+    ['#141E30', '#243B55', COLORS.teal], // teal
+    ['#1a1a2e', '#16213e', COLORS.accent], // violet
+    ['#0f0c29', '#302b63', COLORS.coral], // coral
+    ['#141E30', '#1a1a2e', COLORS.rating.mid], // amber
+    ['#0d0d0d', '#1a1a2e', COLORS.teal], // mint
+    ['#1a1a2e', '#0f3460', COLORS.primary], // navy gold
+    ['#0f0c29', '#1a1a2e', COLORS.accent], // deep violet
 ];
 
 interface WrappedScreenProps {
@@ -32,6 +33,8 @@ interface WrappedScreenProps {
 }
 
 export const WrappedScreen: React.FC<WrappedScreenProps> = ({ year, onClose }) => {
+    const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = useWindowDimensions();
+    const insets = useSafeAreaInsets();
     const [stats, setStats] = useState<WrappedStats | null>(null);
     const [loading, setLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(0);
@@ -50,12 +53,21 @@ export const WrappedScreen: React.FC<WrappedScreenProps> = ({ year, onClose }) =
 
     useEffect(() => {
         const loadStatsAsync = async () => {
-            const { StatsService } = await import('../services/StatsService');
-            const data = await StatsService.computeWrapped(year);
-            if (!isMounted.current) return;
-            setStats(data);
-            setLoading(false);
-            Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }).start();
+            try {
+                const { StatsService } = await import('../services/StatsService');
+                const data = await StatsService.computeWrapped(year);
+                if (!isMounted.current) return;
+                setStats(data);
+            } catch {
+                // If stats fail to compute, show the empty state
+                if (!isMounted.current) return;
+                setStats(null);
+            } finally {
+                if (isMounted.current) {
+                    setLoading(false);
+                    Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }).start();
+                }
+            }
         };
         loadStatsAsync();
     }, [year, fadeAnim]);
@@ -68,7 +80,7 @@ export const WrappedScreen: React.FC<WrappedScreenProps> = ({ year, onClose }) =
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
-                <LinearGradient colors={['#0f0c29', '#302b63', '#24243e']} style={StyleSheet.absoluteFill} />
+                <LinearGradient colors={GRADIENTS.wrapped} style={StyleSheet.absoluteFill} />
                 <ActivityIndicator size="large" color={COLORS.primary} />
                 <Text style={styles.loadingText}>Crunching your stats...</Text>
             </View>
@@ -78,7 +90,7 @@ export const WrappedScreen: React.FC<WrappedScreenProps> = ({ year, onClose }) =
     if (!stats || stats.totalEntries === 0) {
         return (
             <View style={styles.loadingContainer}>
-                <LinearGradient colors={['#0f0c29', '#302b63', '#24243e']} style={StyleSheet.absoluteFill} />
+                <LinearGradient colors={GRADIENTS.wrapped} style={StyleSheet.absoluteFill} />
                 <Ionicons name="film-outline" size={64} color={COLORS.text.muted} />
                 <Text style={styles.emptyTitle}>Nothing to Wrap for {year}!</Text>
                 <Text style={styles.emptySubtitle}>Log some movies and episodes, then come back.</Text>
@@ -89,7 +101,7 @@ export const WrappedScreen: React.FC<WrappedScreenProps> = ({ year, onClose }) =
         );
     }
 
-    const cards = buildCards(stats, year);
+    const cards = buildCards(stats, year, SCREEN_WIDTH);
     const totalPages = cards.length;
 
     return (
@@ -104,7 +116,7 @@ export const WrappedScreen: React.FC<WrappedScreenProps> = ({ year, onClose }) =
                     decelerationRate="fast"
                 >
                     {cards.map((card, index) => (
-                        <View key={index} style={styles.cardWrapper}>
+                        <View key={index} style={[styles.cardWrapper, { width: SCREEN_WIDTH, minHeight: SCREEN_HEIGHT }]}>
                             <LinearGradient
                                 colors={CARD_GRADIENTS[index % CARD_GRADIENTS.length]}
                                 style={StyleSheet.absoluteFill}
@@ -113,7 +125,7 @@ export const WrappedScreen: React.FC<WrappedScreenProps> = ({ year, onClose }) =
                             />
                             <ScrollView
                                 style={styles.cardScrollContent}
-                                contentContainerStyle={styles.cardContentContainer}
+                                contentContainerStyle={[styles.cardContentContainer, { minHeight: SCREEN_HEIGHT }]}
                                 showsVerticalScrollIndicator={false}
                             >
                                 {card.content}
@@ -123,12 +135,12 @@ export const WrappedScreen: React.FC<WrappedScreenProps> = ({ year, onClose }) =
                 </ScrollView>
 
                 {/* Close button */}
-                <TouchableOpacity style={styles.closeButton} onPress={onClose} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Close Wrapped">
+                <TouchableOpacity style={[styles.closeButton, { top: insets.top + SPACING.s }]} onPress={onClose} activeOpacity={CONFIG.LAYOUT.ACTIVE_OPACITY} accessibilityRole="button" accessibilityLabel="Close Wrapped">
                     <Ionicons name="close" size={24} color={COLORS.text.primary} />
                 </TouchableOpacity>
 
                 {/* Page dots */}
-                <View style={styles.dotsContainer}>
+                <View style={[styles.dotsContainer, { bottom: insets.bottom + SPACING.m }]}>
                     {Array.from({ length: totalPages }).map((_, i) => (
                         <View
                             key={i}
@@ -138,7 +150,7 @@ export const WrappedScreen: React.FC<WrappedScreenProps> = ({ year, onClose }) =
                 </View>
 
                 {/* Page counter */}
-                <View style={styles.pageCounter}>
+                <View style={[styles.pageCounter, { top: insets.top + SPACING.s }]}>
                     <Text style={styles.pageCounterText}>{currentPage + 1} / {totalPages}</Text>
                 </View>
             </Animated.View>
@@ -146,7 +158,7 @@ export const WrappedScreen: React.FC<WrappedScreenProps> = ({ year, onClose }) =
     );
 };
 
-// ── Card builders ──
+// â”€â”€ Card builders â”€â”€
 
 interface CardData {
     content: React.ReactNode;
@@ -156,7 +168,7 @@ const StatValue: React.FC<{ value: string | number; label: string; icon?: string
     <View style={cardStyles.statItem}>
         {icon && <Ionicons name={icon as any} size={20} color={color || COLORS.primary} style={{ marginBottom: 4 }} />}
         <Text style={[cardStyles.statValue, color ? { color } : {}]}>{value}</Text>
-        <Text style={cardStyles.statLabel}>{label}</Text>
+        <Text style={cardStyles.statLabel} numberOfLines={2}>{label}</Text>
     </View>
 );
 
@@ -177,7 +189,7 @@ const RankRow: React.FC<{ rank: number; text: string; subtext?: string; color?: 
     </View>
 );
 
-const BarChart: React.FC<{ data: { label: string; value: number; color?: string }[]; maxWidth?: number }> = ({ data, maxWidth = SCREEN_WIDTH - 120 }) => {
+const BarChart: React.FC<{ data: { label: string; value: number; color?: string }[]; maxWidth: number }> = ({ data, maxWidth }) => {
     const maxVal = Math.max(...data.map(d => d.value), 1);
     return (
         <View style={cardStyles.barChart}>
@@ -194,7 +206,7 @@ const BarChart: React.FC<{ data: { label: string; value: number; color?: string 
     );
 };
 
-function buildCards(stats: WrappedStats, year: number): CardData[] {
+function buildCards(stats: WrappedStats, year: number, screenWidth: number): CardData[] {
     const cards: CardData[] = [];
 
     // 1. Hero card
@@ -209,7 +221,7 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
                     <StatValue value={stats.totalEpisodes} label="Episodes" icon="tv-outline" />
                     <StatValue value={stats.totalEntries} label="Total" icon="library-outline" />
                 </View>
-                <Text style={cardStyles.swipeHint}>Swipe to explore →</Text>
+                <Text style={cardStyles.swipeHint}>Swipe to explore â†’</Text>
             </View>
         ),
     });
@@ -246,14 +258,14 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
                 <View>
                     <SectionTitle text="Your Top Movies" icon="trophy-outline" />
                     {stats.highestRatedMovies.map((m, i) => (
-                        <RankRow key={i} rank={i + 1} text={m.title} subtext={`${m.rating > 5 ? (m.rating / 2).toFixed(1) : m.rating}★`} color={COLORS.primary} />
+                        <RankRow key={i} rank={i + 1} text={m.title} subtext={`${m.rating > 5 ? (m.rating / 2).toFixed(1) : m.rating}â˜…`} color={COLORS.primary} />
                     ))}
                     {stats.lowestRatedMovies.length > 0 && (
                         <>
                             <View style={{ marginTop: SPACING.l }} />
                             <SectionTitle text="Lowest Rated" icon="thumbs-down-outline" />
                             {stats.lowestRatedMovies.slice(0, 3).map((m, i) => (
-                                <RankRow key={i} rank={i + 1} text={m.title} subtext={`${m.rating > 5 ? (m.rating / 2).toFixed(1) : m.rating}★`} color={COLORS.coral} />
+                                <RankRow key={i} rank={i + 1} text={m.title} subtext={`${m.rating > 5 ? (m.rating / 2).toFixed(1) : m.rating}â˜…`} color={COLORS.coral} />
                             ))}
                         </>
                     )}
@@ -269,7 +281,7 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
                 <View>
                     <SectionTitle text="Your Top Shows" icon="tv-outline" />
                     {stats.highestRatedShows.map((s, i) => (
-                        <RankRow key={i} rank={i + 1} text={s.name} subtext={`${s.avgRating}★ avg · ${s.episodeCount} eps rated`} color={COLORS.primary} />
+                        <RankRow key={i} rank={i + 1} text={s.name} subtext={`${s.avgRating}â˜… avg Â· ${s.episodeCount} eps rated`} color={COLORS.primary} />
                     ))}
                     <View style={cardStyles.statsGrid}>
                         <StatValue value={stats.uniqueShowsWatched} label="Shows Watched" icon="tv-outline" color={COLORS.teal} />
@@ -282,12 +294,13 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
 
     // 5. Genre breakdown
     if (stats.topGenres.length > 0) {
-        const genreColors = [COLORS.primary, COLORS.teal, COLORS.accent, COLORS.coral, '#F7A44C', '#7C6AEF', '#2DD4A8', '#EF6461', '#C8A555', '#8C897F'];
+        const genreColors = [COLORS.primary, COLORS.teal, COLORS.accent, COLORS.coral, COLORS.rating.mid, COLORS.accent, COLORS.teal, COLORS.coral, COLORS.primary, COLORS.text.secondary];
         cards.push({
             content: (
                 <View>
                     <SectionTitle text="Genre Breakdown" icon="grid-outline" />
                     <BarChart
+                        maxWidth={screenWidth - 120}
                         data={stats.topGenres.slice(0, 8).map((g, i) => ({
                             label: g.genre,
                             value: g.count,
@@ -298,9 +311,9 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
                         <>
                             <View style={{ marginTop: SPACING.l }} />
                             <SectionTitle text="Genre You Rate Highest" icon="star-outline" />
-                            <RankRow rank={1} text={stats.genreByAvgRating[0].genre} subtext={`${stats.genreByAvgRating[0].avgRating}★ average`} color={COLORS.teal} />
+                            <RankRow rank={1} text={stats.genreByAvgRating[0].genre} subtext={`${stats.genreByAvgRating[0].avgRating}â˜… average`} color={COLORS.teal} />
                             {stats.genreByAvgRating.length > 1 && (
-                                <RankRow rank={2} text={stats.genreByAvgRating[1].genre} subtext={`${stats.genreByAvgRating[1].avgRating}★ average`} />
+                                <RankRow rank={2} text={stats.genreByAvgRating[1].genre} subtext={`${stats.genreByAvgRating[1].avgRating}â˜… average`} />
                             )}
                         </>
                     )}
@@ -318,15 +331,16 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
                 <View>
                     <SectionTitle text="How You Rate" icon="star-outline" />
                     <BarChart
+                        maxWidth={screenWidth - 120}
                         data={ratingEntries.map(([rating, count]) => ({
-                            label: `${rating}★`,
+                            label: `${rating}â˜…`,
                             value: count,
                             color: parseFloat(rating) >= 4 ? COLORS.teal : parseFloat(rating) >= 2.5 ? COLORS.primary : COLORS.coral,
                         }))}
                     />
                     <View style={cardStyles.statsGrid}>
-                        <StatValue value={stats.avgMovieRating > 0 ? `${stats.avgMovieRating}★` : '—'} label="Avg Movie Rating" color={COLORS.primary} />
-                        <StatValue value={stats.avgEpisodeRating > 0 ? `${stats.avgEpisodeRating}★` : '—'} label="Avg Episode Rating" color={COLORS.teal} />
+                        <StatValue value={stats.avgMovieRating > 0 ? `${stats.avgMovieRating}â˜…` : 'â€”'} label="Avg Movie Rating" color={COLORS.primary} />
+                        <StatValue value={stats.avgEpisodeRating > 0 ? `${stats.avgEpisodeRating}â˜…` : 'â€”'} label="Avg Episode Rating" color={COLORS.teal} />
                     </View>
                 </View>
             ),
@@ -372,8 +386,7 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
             content: (
                 <View>
                     <SectionTitle text="Monthly Activity" icon="calendar-outline" />
-                    <BarChart
-                        data={monthEntries.slice(-12).map(([key, count]) => ({
+                    <BarChart                        maxWidth={screenWidth - 120}                        data={monthEntries.slice(-12).map(([key, count]) => ({
                             label: months[parseInt(key.split('-')[1]) - 1] || key,
                             value: count,
                             color: COLORS.teal,
@@ -421,6 +434,7 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
                     <SectionTitle text="Movie Time Machine" icon="film-outline" />
                     {decadeEntries.length > 0 && (
                         <BarChart
+                            maxWidth={screenWidth - 120}
                             data={decadeEntries.map(([decade, count]) => ({
                                 label: decade,
                                 value: count,
@@ -429,8 +443,8 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
                         />
                     )}
                     <View style={cardStyles.statsGrid}>
-                        {stats.oldestMovie && <StatValue value={stats.oldestMovie.year.toString()} label={stats.oldestMovie.title.length > 20 ? stats.oldestMovie.title.slice(0, 18) + '…' : stats.oldestMovie.title} color={COLORS.primary} />}
-                        {stats.newestMovie && <StatValue value={stats.newestMovie.year.toString()} label={stats.newestMovie.title.length > 20 ? stats.newestMovie.title.slice(0, 18) + '…' : stats.newestMovie.title} color={COLORS.teal} />}
+                        {stats.oldestMovie && <StatValue value={stats.oldestMovie.year.toString()} label={stats.oldestMovie.title} color={COLORS.primary} />}
+                        {stats.newestMovie && <StatValue value={stats.newestMovie.year.toString()} label={stats.newestMovie.title} color={COLORS.teal} />}
                     </View>
                     {stats.rewatchCount > 0 && (
                         <View style={[cardStyles.infoBox, { marginTop: SPACING.m }]}>
@@ -510,7 +524,7 @@ function buildCards(stats: WrappedStats, year: number): CardData[] {
                     <SummaryRow icon="tv" label="Episodes" value={stats.totalEpisodes.toString()} />
                     <SummaryRow icon="time" label="Hours" value={stats.totalHoursWatched.toString()} />
                     <SummaryRow icon="flame" label="Best Streak" value={`${stats.longestStreak} days`} />
-                    <SummaryRow icon="star" label="Avg Movie Rating" value={stats.avgMovieRating > 0 ? `${stats.avgMovieRating}★` : '—'} />
+                    <SummaryRow icon="star" label="Avg Movie Rating" value={stats.avgMovieRating > 0 ? `${stats.avgMovieRating}â˜…` : 'â€”'} />
                     <SummaryRow icon="heart" label="Likes" value={stats.totalLikes.toString()} />
                     <SummaryRow icon="albums" label="Shows" value={stats.uniqueShowsWatched.toString()} />
                     <SummaryRow icon="layers" label="Seasons" value={stats.totalSeasonsStarted.toString()} />
@@ -532,12 +546,12 @@ const SummaryRow: React.FC<{ icon: string; label: string; value: string }> = ({ 
     </View>
 );
 
-// ── Styles ──
+// â”€â”€ Styles â”€â”€
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#07070B',
+        backgroundColor: COLORS.background,
     },
     loadingContainer: {
         flex: 1,
@@ -578,26 +592,23 @@ const styles = StyleSheet.create({
         fontSize: 15,
     },
     cardWrapper: {
-        width: SCREEN_WIDTH,
-        minHeight: SCREEN_HEIGHT,
+        flex: 1,
     },
     cardScrollContent: {
         flex: 1,
     },
     cardContentContainer: {
         paddingHorizontal: CARD_PADDING,
-        paddingTop: Platform.OS === 'ios' ? 100 : 80,
-        paddingBottom: 120,
-        minHeight: SCREEN_HEIGHT,
+        paddingTop: CONFIG.LAYOUT.WRAPPED_CONTENT_PADDING_TOP,
+        paddingBottom: CONFIG.LAYOUT.TAB_BAR_FULL_HEIGHT,
     },
     closeButton: {
         position: 'absolute',
-        top: Platform.OS === 'ios' ? 56 : 40,
         right: SPACING.m,
         width: 40,
         height: 40,
         borderRadius: 20,
-        backgroundColor: 'rgba(25, 25, 35, 0.8)',
+        backgroundColor: COLORS.overlay.light,
         justifyContent: 'center',
         alignItems: 'center',
         zIndex: 10,
@@ -606,18 +617,17 @@ const styles = StyleSheet.create({
     },
     dotsContainer: {
         position: 'absolute',
-        bottom: Platform.OS === 'ios' ? 50 : 30,
         left: 0,
         right: 0,
         flexDirection: 'row',
         justifyContent: 'center',
-        gap: 6,
+        gap: SPACING.s,
     },
     dot: {
         width: 6,
         height: 6,
         borderRadius: 3,
-        backgroundColor: 'rgba(255,255,255,0.2)',
+        backgroundColor: COLORS.white.alpha20,
     },
     dotActive: {
         backgroundColor: COLORS.primary,
@@ -625,7 +635,6 @@ const styles = StyleSheet.create({
     },
     pageCounter: {
         position: 'absolute',
-        top: Platform.OS === 'ios' ? 60 : 44,
         left: SPACING.m,
         zIndex: 10,
     },
@@ -692,7 +701,7 @@ const cardStyles = StyleSheet.create({
         lineHeight: 22,
     },
     infoBox: {
-        backgroundColor: 'rgba(255,255,255,0.06)',
+        backgroundColor: COLORS.white.alpha06,
         borderRadius: BORDER_RADIUS.m,
         paddingHorizontal: SPACING.m,
         paddingVertical: SPACING.m,
@@ -700,13 +709,13 @@ const cardStyles = StyleSheet.create({
         width: '100%',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
+        borderColor: COLORS.white.alpha06,
     },
     infoBoxLabel: {
         color: COLORS.text.muted,
         fontFamily: FONTS.mono,
         fontSize: 11,
-        letterSpacing: 1.5,
+        letterSpacing: LETTER_SPACING.wider,
         textTransform: 'uppercase',
         marginBottom: 4,
     },
@@ -720,7 +729,7 @@ const cardStyles = StyleSheet.create({
         color: COLORS.text.secondary,
         fontFamily: FONTS.body,
         fontSize: 13,
-        marginTop: 2,
+        marginTop: SPACING.xxs,
     },
     sectionTitleRow: {
         flexDirection: 'row',
@@ -738,7 +747,7 @@ const cardStyles = StyleSheet.create({
     },
     statItem: {
         alignItems: 'center',
-        gap: 2,
+        gap: SPACING.xxs,
     },
     statValue: {
         color: COLORS.text.primary,
@@ -763,7 +772,7 @@ const cardStyles = StyleSheet.create({
         gap: SPACING.m,
         paddingVertical: SPACING.s,
         borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255,255,255,0.06)',
+        borderBottomColor: COLORS.white.alpha06,
     },
     rankNumber: {
         color: COLORS.primary,
@@ -773,7 +782,7 @@ const cardStyles = StyleSheet.create({
     },
     rankTextWrap: {
         flex: 1,
-        gap: 2,
+        gap: SPACING.xxs,
     },
     rankText: {
         color: COLORS.text.primary,
@@ -803,7 +812,7 @@ const cardStyles = StyleSheet.create({
     barTrack: {
         flex: 1,
         height: 16,
-        backgroundColor: 'rgba(255,255,255,0.06)',
+        backgroundColor: COLORS.white.alpha06,
         borderRadius: 8,
         overflow: 'hidden',
     },
@@ -822,7 +831,7 @@ const cardStyles = StyleSheet.create({
         color: COLORS.text.muted,
         fontFamily: FONTS.mono,
         fontSize: 14,
-        letterSpacing: 3,
+        letterSpacing: LETTER_SPACING.widest,
         textTransform: 'uppercase',
         marginBottom: SPACING.xs,
     },
@@ -852,9 +861,9 @@ const cardStyles = StyleSheet.create({
         paddingHorizontal: 12,
         paddingVertical: 6,
         borderRadius: BORDER_RADIUS.round,
-        backgroundColor: 'rgba(255,255,255,0.08)',
+        backgroundColor: COLORS.white.alpha08,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderColor: COLORS.white.alpha10,
     },
     tagText: {
         color: COLORS.text.primary,
@@ -872,7 +881,7 @@ const cardStyles = StyleSheet.create({
         gap: SPACING.s,
         paddingVertical: SPACING.s,
         borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255,255,255,0.06)',
+        borderBottomColor: COLORS.white.alpha06,
     },
     summaryLabel: {
         color: COLORS.text.secondary,

@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, Modal, ScrollView, TouchableOpacity, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, Modal, ScrollView, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING } from '../constants/theme';
 
@@ -19,7 +20,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({ visible, onClose }) => {
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Legal & Privacy</Text>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Close Legal Screen">
+          <TouchableOpacity onPress={onClose} style={styles.closeButton} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Close Legal Screen">
             <Ionicons name="close" size={24} color={COLORS.text.primary} />
           </TouchableOpacity>
         </View>
@@ -102,8 +103,8 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
   closeButton: {
-    width: 32,
-    height: 32,
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -55,7 +55,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: BORDER_RADIUS.round,
-    backgroundColor: 'rgba(239, 100, 97, 0.1)',
+    backgroundColor: COLORS.coralSubtle,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: SPACING.l,

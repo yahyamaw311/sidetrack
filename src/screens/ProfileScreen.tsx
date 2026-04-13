@@ -1,14 +1,14 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Platform, Animated, RefreshControl, Alert, useWindowDimensions
+  Animated, RefreshControl, Alert, useWindowDimensions, ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
-import { StorageProvider } from '../services/StorageProvider';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, SHADOWS, GRADIENTS } from '../constants/theme';
+import { CONFIG } from '../constants/config';
 import { useAppStore } from '../store/appStore';
 import { LegalModal } from '../components/LegalModal';
 
@@ -29,12 +29,12 @@ const PERSONALITY_ICONS: Record<string, string> = {
 };
 
 // ── Quick Stat Pill ──
-const StatPill: React.FC<{ icon: string; label: string; value: string; color: string }> = ({ icon, label, value, color }) => {
+const StatPill: React.FC<{ icon: string; label: string; value: string; color: string; grow?: boolean }> = ({ icon, label, value, color, grow }) => {
   const { width } = useWindowDimensions();
   const pillWidth = (width - SPACING.m * 2 - SPACING.s) / 2 - 1;
 
   return (
-    <View style={[statStyles.pill, { width: pillWidth }]} accessibilityRole="text" accessibilityLabel={`${value} ${label}`}>
+    <View style={[statStyles.pill, { width: pillWidth }, grow && { width: undefined, flex: 1 }]} accessibilityRole="text" accessibilityLabel={`${value} ${label}`}>
       <View style={[statStyles.pillIcon, { backgroundColor: color + '1A' }]}>
         <Ionicons name={icon as any} size={16} color={color} />
       </View>
@@ -64,9 +64,9 @@ const WrappedCard: React.FC<{ onPress: () => void; year: number }> = ({ onPress,
   const shimmerOpacity = shimmer.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] });
 
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={wrappedCardStyles.wrap} accessibilityRole="button" accessibilityLabel={`View Sidetrack Wrapped for ${year}`} accessibilityHint="Double tap to see your year in review">
+    <TouchableOpacity onPress={onPress} activeOpacity={CONFIG.LAYOUT.ACTIVE_OPACITY_CARD} style={wrappedCardStyles.wrap} accessibilityRole="button" accessibilityLabel={`View Sidetrack Wrapped for ${year}`} accessibilityHint="Double tap to see your year in review">
       <LinearGradient
-        colors={['#0f0c29', '#302b63', '#24243e']}
+        colors={GRADIENTS.wrapped}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={wrappedCardStyles.gradient}
@@ -92,7 +92,7 @@ const WrappedCard: React.FC<{ onPress: () => void; year: number }> = ({ onPress,
 const MenuRow: React.FC<{ icon: string; label: string; sublabel?: string; color?: string; onPress: () => void; destructive?: boolean }> = ({
   icon, label, sublabel, color = COLORS.text.secondary, onPress, destructive,
 }) => (
-  <TouchableOpacity style={menuStyles.row} onPress={onPress} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={sublabel ? `${label}, ${sublabel}` : label}>
+  <TouchableOpacity style={menuStyles.row} onPress={onPress} activeOpacity={CONFIG.LAYOUT.ACTIVE_OPACITY} accessibilityRole="button" accessibilityLabel={sublabel ? `${label}, ${sublabel}` : label}>
     <View style={[menuStyles.rowIcon, { backgroundColor: (destructive ? COLORS.coral : color) + '1A' }]}>
       <Ionicons name={icon as any} size={17} color={destructive ? COLORS.coral : color} />
     </View>
@@ -115,29 +115,42 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onOpenWrapped }) =
   const [watchlistCount, setWatchlistCount] = useState(0);
   const [streak, setStreak] = useState(0);
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [showLegal, setShowLegal] = useState(false);
 
-  const loadStats = useCallback(async () => {
-    const { StatsService } = await import('../services/StatsService');
-    const stats = await StatsService.computeWrapped();
-    setMovieCount(stats.totalMovies);
-    setEpisodeCount(stats.totalEpisodes);
-    setHoursWatched(stats.totalHoursWatched);
-    setPersonality(stats.personalityType);
-    setFavCount(stats.totalFavorites);
-    setWatchlistCount((await StorageProvider.getWatchlist()).length);
-    setStreak(stats.longestStreak);
-    setLoaded(true);
-  }, []);
-
-  // Re-run stats when store data changes
+  // Store slices — declared before loadStats so useCallback can close over them
   const watchedMovies = useAppStore(s => s.watchedMovies);
   const watchedEpisodes = useAppStore(s => s.watchedEpisodes);
   const favoriteMovieIds = useAppStore(s => s.favoriteMovieIds);
   const favoriteEpisodeIds = useAppStore(s => s.favoriteEpisodeIds);
   const watchlist = useAppStore(s => s.watchlist);
 
-  useEffect(() => { loadStats(); }, [loadStats, watchedMovies, watchedEpisodes, favoriteMovieIds, favoriteEpisodeIds, watchlist]);
+  const loadStats = useCallback(async () => {
+    try {
+      setLoadError(false);
+      const { StatsService } = await import('../services/StatsService');
+      const stats = await StatsService.computeWrapped(undefined, {
+        movies: watchedMovies,
+        episodes: watchedEpisodes,
+        favoriteMovieCount: favoriteMovieIds.size,
+        favoriteEpisodeCount: favoriteEpisodeIds.size,
+        watchlistCount: watchlist.length,
+      });
+      setMovieCount(stats.totalMovies);
+      setEpisodeCount(stats.totalEpisodes);
+      setHoursWatched(stats.totalHoursWatched);
+      setPersonality(stats.personalityType);
+      setFavCount(stats.totalFavorites);
+      setWatchlistCount(watchlist.length);
+      setStreak(stats.longestStreak);
+      setLoaded(true);
+    } catch {
+      setLoadError(true);
+      setLoaded(true);
+    }
+  }, [watchedMovies, watchedEpisodes, favoriteMovieIds, favoriteEpisodeIds, watchlist]);
+
+  useEffect(() => { loadStats(); }, [loadStats]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -161,7 +174,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onOpenWrapped }) =
           style: 'destructive',
           onPress: async () => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            require('../services/DetailCache');
             const keys = (await (await import('@react-native-async-storage/async-storage')).default.getAllKeys()).filter(k => k.startsWith('@sidetrack_detail_cache_'));
             if (keys.length > 0) {
               await (await import('@react-native-async-storage/async-storage')).default.multiRemove(keys);
@@ -187,7 +199,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onOpenWrapped }) =
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
             await AsyncStorage.clear();
-            await loadStats();
+            // Reset the Zustand store so in-memory state reflects the cleared storage immediately
+            await useAppStore.getState().hydrate();
           }
         }
       ]
@@ -219,14 +232,47 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onOpenWrapped }) =
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} colors={[COLORS.primary]} />
           }
         >
-          {/* Personality Badge */}
+          {/* Personality Badge — Hero card */}
+          {!loaded && (
+            <View style={styles.loadingStats}>
+              <ActivityIndicator size="large" color={COLORS.primary} />
+            </View>
+          )}
+          {loaded && loadError && (
+            <View style={styles.loadingStats}>
+              <Ionicons name="alert-circle-outline" size={32} color={COLORS.text.muted} />
+              <Text style={{ color: COLORS.text.muted, fontFamily: FONTS.body, marginTop: SPACING.s }}>Couldn't load stats</Text>
+              <TouchableOpacity onPress={handleRefresh} style={{ marginTop: SPACING.s }}>
+                <Text style={{ color: COLORS.primary, fontFamily: FONTS.bodySemiBold }}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          )}
           {loaded && personality && (
             <View style={styles.personalityCard}>
+              <LinearGradient
+                colors={['rgba(200,165,85,0.08)', 'transparent']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.personalityGradient}
+              />
               <View style={styles.personalityIconWrap}>
-                <Ionicons name={(PERSONALITY_ICONS as any)[personality.label] || 'person-outline'} size={36} color={COLORS.primary} />
+                <Ionicons name={(PERSONALITY_ICONS as any)[personality.label] || 'person-outline'} size={40} color={COLORS.primary} />
               </View>
               <Text style={styles.personalityLabel}>{personality.label}</Text>
               <Text style={styles.personalityDesc}>{personality.description}</Text>
+            </View>
+          )}
+
+          {/* Streak Hero */}
+          {loaded && streak > 0 && (
+            <View style={styles.streakHero}>
+              <View style={styles.streakIconWrap}>
+                <Ionicons name="flame" size={28} color={COLORS.coral} />
+              </View>
+              <View style={styles.streakTextWrap}>
+                <Text style={styles.streakValue}>{streak} day streak</Text>
+                <Text style={styles.streakLabel}>Your longest watching streak</Text>
+              </View>
             </View>
           )}
 
@@ -235,9 +281,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onOpenWrapped }) =
             <StatPill icon="film-outline" label="Movies" value={movieCount.toString()} color={COLORS.primary} />
             <StatPill icon="tv-outline" label="Episodes" value={episodeCount.toString()} color={COLORS.accent} />
             <StatPill icon="time-outline" label="Watched" value={formatTime(hoursWatched)} color={COLORS.teal} />
-            <StatPill icon="flame-outline" label="Streak" value={`${streak}d`} color={COLORS.coral} />
-            <StatPill icon="heart-outline" label="Favorites" value={favCount.toString()} color="#E74C6F" />
-            <StatPill icon="bookmark-outline" label="Watchlist" value={watchlistCount.toString()} color={COLORS.primaryLight} />
+            <StatPill icon="heart-outline" label="Favorites" value={favCount.toString()} color={COLORS.favorite} />
+            <StatPill icon="bookmark-outline" label="Watchlist" value={watchlistCount.toString()} color={COLORS.primaryLight} grow />
           </View>
 
           {/* Wrapped CTA */}
@@ -292,7 +337,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onOpenWrapped }) =
           </View>
 
           {/* Bottom spacer for tab bar */}
-          <View style={{ height: 100 }} />
+          <View style={styles.tabBarSpacer} />
         </ScrollView>
       </SafeAreaView>
 
@@ -310,7 +355,6 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    paddingTop: Platform.OS === 'android' ? 44 : 0,
   },
   header: {
     flexDirection: 'row',
@@ -329,43 +373,89 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.m,
     paddingTop: SPACING.s,
   },
+  loadingStats: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.xxl,
+  },
   personalityCard: {
     alignItems: 'center',
     backgroundColor: COLORS.card,
     borderRadius: BORDER_RADIUS.l,
-    paddingVertical: SPACING.l,
-    paddingHorizontal: SPACING.m,
+    paddingVertical: SPACING.xl,
+    paddingHorizontal: SPACING.l,
     marginBottom: SPACING.m,
     borderWidth: 1,
-    borderColor: COLORS.borderLight,
+    borderColor: COLORS.primaryBorder,
+    overflow: 'hidden',
+    ...SHADOWS.medium,
+  },
+  personalityGradient: {
+    ...StyleSheet.absoluteFillObject,
   },
   personalityIconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: COLORS.primaryMuted,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: SPACING.xs,
+    marginBottom: SPACING.s,
   },
   personalityLabel: {
     fontFamily: FONTS.display,
-    fontSize: 20,
+    fontSize: 22,
     color: COLORS.text.primary,
     marginBottom: SPACING.xs,
   },
   personalityDesc: {
     fontFamily: FONTS.body,
-    fontSize: 13,
+    fontSize: 14,
     color: COLORS.text.secondary,
     textAlign: 'center',
-    lineHeight: 19,
+    lineHeight: 20,
+  },
+  streakHero: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderRadius: BORDER_RADIUS.m,
+    padding: SPACING.m,
+    marginBottom: SPACING.m,
+    borderWidth: 1,
+    borderColor: COLORS.coralBorder,
+    gap: SPACING.m,
+  },
+  streakIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: BORDER_RADIUS.s,
+    backgroundColor: COLORS.coralMuted,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  streakTextWrap: {
+    flex: 1,
+    gap: SPACING.xxs,
+  },
+  streakValue: {
+    fontFamily: FONTS.display,
+    fontSize: 20,
+    color: COLORS.text.primary,
+  },
+  streakLabel: {
+    fontFamily: FONTS.body,
+    fontSize: 12,
+    color: COLORS.text.muted,
   },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: SPACING.s,
     marginBottom: SPACING.l,
+  },
+  tabBarSpacer: {
+    height: CONFIG.LAYOUT.TAB_BAR_FULL_HEIGHT,
   },
   section: {
     marginBottom: SPACING.l,
@@ -396,7 +486,7 @@ const statStyles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: COLORS.card,
     borderRadius: BORDER_RADIUS.m,
-    paddingVertical: SPACING.s + 2,
+    paddingVertical: SPACING.s,
     paddingHorizontal: SPACING.m,
     gap: SPACING.s,
     borderWidth: 1,
@@ -433,7 +523,7 @@ const wrappedCardStyles = StyleSheet.create({
   gradient: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING.m + 4,
+    paddingVertical: SPACING.l,
     paddingHorizontal: SPACING.m,
     gap: SPACING.m,
     borderRadius: BORDER_RADIUS.l,
@@ -442,7 +532,7 @@ const wrappedCardStyles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: COLORS.white.alpha08,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -461,13 +551,13 @@ const wrappedCardStyles = StyleSheet.create({
     fontFamily: FONTS.body,
     fontSize: 13,
     color: COLORS.text.secondary,
-    marginTop: 2,
+    marginTop: SPACING.xxs,
   },
   arrow: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: COLORS.white.alpha06,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -484,9 +574,9 @@ const menuStyles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING.m - 2,
+    paddingVertical: SPACING.m,
     paddingHorizontal: SPACING.m,
-    gap: SPACING.s + 2,
+    gap: SPACING.s,
   },
   rowIcon: {
     width: 32,
@@ -512,6 +602,6 @@ const menuStyles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: COLORS.borderLight,
-    marginLeft: SPACING.m + 32 + SPACING.s + 2,
+    marginLeft: SPACING.m + 32 + SPACING.s,
   },
 });

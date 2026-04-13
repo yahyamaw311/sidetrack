@@ -1,10 +1,10 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ImageBackground, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 const YoutubePlayer: any = lazy(() => import('react-native-youtube-iframe'));
-import { COLORS, getRatingColor } from '../constants/theme';
+import { COLORS, GRADIENTS, getRatingColor } from '../constants/theme';
 import { CONFIG } from '../constants/config';
 import { tmdbService } from '../services/tmdbService';
 import { Snackbar } from '../components/Snackbar';
@@ -47,6 +47,7 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
     openLogModal,
     handleConfirmLog,
   } = useMovieDetail(movieId);
+  const [overviewExpanded, setOverviewExpanded] = useState(false);
 
   const formatRuntime = (mins: number) => {
     const h = Math.floor(mins / 60);
@@ -71,7 +72,7 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
         {onBack && (
           <SafeAreaView style={styles.backSafe}>
             <TouchableOpacity onPress={onBack} style={styles.backButton} accessibilityRole="button" accessibilityLabel="Go back">
-              <Ionicons name="chevron-back" size={20} color={COLORS.text.primary} />
+              <Ionicons name="chevron-back" size={22} color={COLORS.text.primary} />
             </TouchableOpacity>
           </SafeAreaView>
         )}
@@ -88,7 +89,7 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
           style={[styles.backdrop, { height: height * CONFIG.LAYOUT.BACKDROP_HEIGHT_RATIO_HIGH }]}
         >
           <LinearGradient
-            colors={['rgba(7,7,11,0.3)', 'rgba(7,7,11,0.6)', COLORS.background]}
+            colors={GRADIENTS.backdrop}
             locations={[0, 0.6, 1]}
             style={styles.backdropGradient}
           />
@@ -96,7 +97,7 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
           {onBack && (
             <SafeAreaView style={styles.backSafe}>
               <TouchableOpacity onPress={onBack} style={styles.backButton}>
-                <Ionicons name="chevron-back" size={20} color={COLORS.text.primary} />
+                <Ionicons name="chevron-back" size={22} color={COLORS.text.primary} />
               </TouchableOpacity>
             </SafeAreaView>
           )}
@@ -210,7 +211,12 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
           {/* Overview */}
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>SYNOPSIS</Text>
-            <Text style={styles.overview}>{movie.overview || 'No overview available.'}</Text>
+            <Text style={styles.overview} numberOfLines={overviewExpanded ? undefined : 4}>{movie.overview || 'No overview available.'}</Text>
+            {(movie.overview || '').length > 200 && (
+              <TouchableOpacity onPress={() => setOverviewExpanded(!overviewExpanded)} activeOpacity={0.7}>
+                <Text style={styles.readMore}>{overviewExpanded ? 'Read less' : 'Read more'}</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Trailer */}
@@ -246,7 +252,7 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
                   />
                   <View style={styles.trailerPlayOverlay}>
                     <View style={styles.trailerPlayButton}>
-                      <Ionicons name="play" size={28} color="#fff" style={{ marginLeft: 3 }} />
+                      <Ionicons name="play" size={28} color={COLORS.text.primary} style={{ marginLeft: 3 }} />
                     </View>
                   </View>
                 </TouchableOpacity>

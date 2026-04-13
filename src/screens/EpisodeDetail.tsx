@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 const YoutubePlayer: any = lazy(() => import('react-native-youtube-iframe'));
-import { COLORS, SPACING, BORDER_RADIUS, getRatingColor } from '../constants/theme';
+import { COLORS, SPACING, BORDER_RADIUS, GRADIENTS, getRatingColor } from '../constants/theme';
 import { CONFIG } from '../constants/config';
 import { tmdbService } from '../services/tmdbService';
 import { WatchedEpisodeModal } from '../components/WatchedEpisodeModal';
@@ -55,6 +55,7 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
 
   const [trailerExpanded, setTrailerExpanded] = useState(false);
   const [trailerReady, setTrailerReady] = useState(false);
+  const [overviewExpanded, setOverviewExpanded] = useState(false);
   const trailerAnim = useRef(new Animated.Value(0)).current;
   const trailerShimmerAnim = useRef(new Animated.Value(0.3)).current;
 
@@ -97,7 +98,7 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
         {onBack && (
           <SafeAreaView style={styles.backSafe}>
             <TouchableOpacity onPress={onBack} style={styles.backButton}>
-              <Ionicons name="chevron-back" size={24} color={COLORS.text.primary} />
+              <Ionicons name="chevron-back" size={22} color={COLORS.text.primary} />
             </TouchableOpacity>
           </SafeAreaView>
         )}
@@ -134,7 +135,7 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
               style={[styles.backdrop, { height: height * CONFIG.LAYOUT.BACKDROP_HEIGHT_RATIO_LOW }]}
             >
               <LinearGradient
-                colors={['rgba(7,7,11,0.3)', 'rgba(7,7,11,0.6)', COLORS.background]}
+                colors={GRADIENTS.backdrop}
                 locations={[0, 0.6, 1]}
                 style={styles.backdropGradient}
               />
@@ -207,7 +208,12 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
               {/* Overview */}
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>ABOUT</Text>
-                <Text style={styles.overview}>{episode?.overview || show.overview || 'No overview available.'}</Text>
+                <Text style={styles.overview} numberOfLines={overviewExpanded ? undefined : 4}>{episode?.overview || show.overview || 'No overview available.'}</Text>
+                {(episode?.overview || show.overview || '').length > 200 && (
+                  <TouchableOpacity onPress={() => setOverviewExpanded(!overviewExpanded)} activeOpacity={0.7}>
+                    <Text style={styles.readMore}>{overviewExpanded ? 'Read less' : 'Read more'}</Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
               {/* Credits */}
@@ -252,7 +258,7 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
                         useNativeDriver: false,
                       }).start();
                     }} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={trailerExpanded ? 'Close trailer' : 'Play trailer'}>
-                      <Ionicons name="logo-youtube" size={24} color="#FF0000" />
+                      <Ionicons name="logo-youtube" size={24} color={COLORS.youtube} />
                       <Text style={styles.showInfoLabel}>{trailerExpanded ? 'Close' : 'Trailer'}</Text>
                     </TouchableOpacity>
                   ) : (
@@ -316,7 +322,7 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
       {onBack && (
         <SafeAreaView style={styles.backSafe} pointerEvents="box-none">
           <TouchableOpacity onPress={onBack} style={styles.backButton} accessibilityRole="button" accessibilityLabel="Go back">
-            <Ionicons name="chevron-back" size={24} color={COLORS.text.primary} />
+            <Ionicons name="chevron-back" size={22} color={COLORS.text.primary} />
           </TouchableOpacity>
         </SafeAreaView>
       )}

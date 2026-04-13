@@ -1,5 +1,6 @@
-import { StyleSheet, Platform } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
+import { CONFIG } from '../constants/config';
 
 export const styles = StyleSheet.create({
   container: {
@@ -8,7 +9,6 @@ export const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    paddingTop: Platform.OS === 'android' ? 44 : 0,
   },
   header: {
     flexDirection: 'row',
@@ -24,8 +24,8 @@ export const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   countBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
+    paddingHorizontal: SPACING.s,
+    paddingVertical: SPACING.xs,
     borderRadius: BORDER_RADIUS.round,
     backgroundColor: COLORS.primaryMuted,
   },
@@ -46,7 +46,7 @@ export const styles = StyleSheet.create({
     gap: SPACING.xs,
   },
   searchIcon: {
-    marginRight: 2,
+    marginRight: SPACING.xxs,
   },
   searchInput: {
     flex: 1,
@@ -60,7 +60,7 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: SPACING.m,
-    paddingBottom: 100,
+    paddingBottom: CONFIG.LAYOUT.TAB_BAR_FULL_HEIGHT,
   },
   loadingText: {
     color: COLORS.text.muted,
@@ -104,7 +104,7 @@ export const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: SPACING.m,
-    paddingBottom: 120,
+    paddingBottom: CONFIG.LAYOUT.TAB_BAR_FULL_HEIGHT,
   },
   row: {
     flexDirection: 'row',
@@ -137,7 +137,7 @@ export const styles = StyleSheet.create({
   },
   info: {
     flex: 1,
-    gap: 3,
+    gap: SPACING.xxs,
   },
   title: {
     color: COLORS.text.primary,
@@ -156,7 +156,7 @@ export const styles = StyleSheet.create({
   },
   genreRow: {
     flexDirection: 'row',
-    gap: 6,
+    gap: SPACING.s,
   },
   genreText: {
     color: COLORS.text.secondary,
@@ -184,7 +184,7 @@ export const styles = StyleSheet.create({
   favFilterBtn: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: BORDER_RADIUS.round,
     backgroundColor: COLORS.card,
     justifyContent: 'center',
     alignItems: 'center',
@@ -206,14 +206,14 @@ export const styles = StyleSheet.create({
   },
   filterChip: {
     paddingHorizontal: SPACING.m,
-    paddingVertical: 6,
+    paddingVertical: SPACING.xs,
     borderRadius: BORDER_RADIUS.round,
     backgroundColor: COLORS.card,
     borderWidth: 1,
     borderColor: COLORS.borderLight,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: SPACING.xs,
   },
   filterChipActive: {
     backgroundColor: COLORS.primaryMuted,
@@ -252,7 +252,7 @@ export const wrappedStyles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: COLORS.white.alpha08,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -261,7 +261,7 @@ export const wrappedStyles = StyleSheet.create({
   },
   bannerTextWrap: {
     flex: 1,
-    gap: 2,
+    gap: SPACING.xxs,
   },
   bannerTitle: {
     color: COLORS.text.primary,
@@ -300,7 +300,7 @@ export const tvStyles = StyleSheet.create({
   },
   showInfo: {
     flex: 1,
-    gap: 2,
+    gap: SPACING.xxs,
   },
   showName: {
     color: COLORS.text.primary,
@@ -316,12 +316,12 @@ export const tvStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.s,
-    marginTop: 2,
+    marginTop: SPACING.xxs,
   },
   avgRatingWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
+    gap: SPACING.xxs,
   },
   avgRatingText: {
     color: COLORS.primary,
@@ -338,7 +338,7 @@ export const tvStyles = StyleSheet.create({
   episodeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: SPACING.ms,
     paddingHorizontal: SPACING.xs,
     gap: SPACING.s,
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -365,7 +365,7 @@ export const tvStyles = StyleSheet.create({
   },
   epInfo: {
     flex: 1,
-    gap: 3,
+    gap: SPACING.xxs,
   },
   epTitle: {
     color: COLORS.text.primary,
@@ -404,11 +404,11 @@ export const tvStyles = StyleSheet.create({
     marginBottom: SPACING.xs,
   },
   breadcrumbBack: {
-    padding: 4,
+    padding: SPACING.xs,
   },
   breadcrumbContent: {
     flex: 1,
-    gap: 1,
+    gap: SPACING.xxs,
   },
   breadcrumbTitle: {
     color: COLORS.primary,
@@ -423,7 +423,7 @@ export const tvStyles = StyleSheet.create({
   infoButton: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: BORDER_RADIUS.round,
     backgroundColor: COLORS.primaryMuted,
     justifyContent: 'center',
     alignItems: 'center',

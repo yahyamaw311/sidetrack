@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { TVShowDetail, MovieDetail, SeasonDetail } from '../types';
+import { TVShowDetail, MovieDetail, SeasonDetail, EpisodeDetailData } from '../types';
 
 /**
  * Persists the most recently fetched detail page data so it can
@@ -77,6 +77,20 @@ export const DetailCache = {
 
   getCachedSeasonDetail: (tvId: number, season: number) =>
     readCache<SeasonDetail>(cacheKey('season', `${tvId}_${season}`)),
+
+  // --- Episode ---------------------------------------------------------------
+  cacheEpisodeDetail: (tvId: number, season: number, episode: number, data: EpisodeDetailData) =>
+    writeCache(cacheKey('episode', `${tvId}_${season}_${episode}`), data),
+
+  getCachedEpisodeDetail: (tvId: number, season: number, episode: number) =>
+    readCache<EpisodeDetailData>(cacheKey('episode', `${tvId}_${season}_${episode}`)),
+
+  // --- IMDb Rating -----------------------------------------------------------
+  cacheIMDbRating: (imdbId: string, data: { imdbRating: string; imdbVotes: string }) =>
+    writeCache(cacheKey('imdb', imdbId), data),
+
+  getCachedIMDbRating: (imdbId: string) =>
+    readCache<{ imdbRating: string; imdbVotes: string }>(cacheKey('imdb', imdbId)),
 
   /**
    * Prune stale and excess entries from AsyncStorage.

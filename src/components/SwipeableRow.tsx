@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, Animated, PanResponder, StyleSheet, TouchableOpacity, LayoutAnimation, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { COLORS, FONTS, BORDER_RADIUS } from '../constants/theme';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
 
 
 
@@ -17,7 +17,7 @@ interface SwipeableRowProps {
 
 export const SwipeableRow = React.memo<SwipeableRowProps>(({ children, onDelete, height, isLoading }) => {
     const translateX = useRef(new Animated.Value(0)).current;
-    const [revealed, setRevealed] = useState(false);
+    const revealedRef = useRef(false);
     const [measuredHeight, setMeasuredHeight] = useState<number | undefined>(height);
     const isDeleting = useRef(false);
 
@@ -40,18 +40,18 @@ export const SwipeableRow = React.memo<SwipeableRowProps>(({ children, onDelete,
                 return Math.abs(gesture.dx) > 10 && Math.abs(gesture.dx) > Math.abs(gesture.dy * 1.5);
             },
             onPanResponderMove: (_, gesture) => {
-                if (gesture.dx > 0 && !revealed) {
+                if (gesture.dx > 0 && !revealedRef.current) {
                     translateX.setValue(gesture.dx * 0.2);
                     return;
                 }
-                const base = revealed ? REVEAL_THRESHOLD : 0;
+                const base = revealedRef.current ? REVEAL_THRESHOLD : 0;
                 translateX.setValue(base + gesture.dx);
             },
             onPanResponderRelease: (_, gesture) => {
-                if (revealed) {
+                if (revealedRef.current) {
                     // If already revealed, allow closing on right swipe
                     if (gesture.dx > 30) {
-                        setRevealed(false);
+                        revealedRef.current = false;
                         snapTo(0);
                     } else {
                         snapTo(REVEAL_THRESHOLD);
@@ -61,7 +61,7 @@ export const SwipeableRow = React.memo<SwipeableRowProps>(({ children, onDelete,
 
                 if (gesture.dx <= REVEAL_THRESHOLD) {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    setRevealed(true);
+                    revealedRef.current = true;
                     snapTo(REVEAL_THRESHOLD);
                 } else {
                     snapTo(0);
@@ -104,10 +104,10 @@ export const SwipeableRow = React.memo<SwipeableRowProps>(({ children, onDelete,
                     accessibilityHint="Double tap to delete this item"
                 >
                     {isLoading ? (
-                        <ActivityIndicator color="#fff" size="small" />
+                        <ActivityIndicator color={COLORS.text.primary} size="small" />
                     ) : (
                         <>
-                            <Ionicons name="trash" size={18} color="#fff" />
+                            <Ionicons name="trash" size={18} color={COLORS.text.primary} />
                             <Text style={styles.deleteText}>Delete</Text>
                         </>
                     )}
@@ -148,10 +148,10 @@ const styles = StyleSheet.create({
         height: '100%',
         justifyContent: 'center',
         alignItems: 'center',
-        gap: 4,
+        gap: SPACING.xs,
     },
     deleteText: {
-        color: '#fff',
+        color: COLORS.text.primary,
         fontFamily: FONTS.bodyMedium,
         fontSize: 11,
     },

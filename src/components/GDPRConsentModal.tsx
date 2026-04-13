@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useAppStore } from '../store/appStore';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, GRADIENTS } from '../constants/theme';
+import { CONFIG } from '../constants/config';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
 export const GDPRConsentModal = () => {
   const { consentGiven, setConsentGiven, hydrated } = useAppStore();
   const [visible, setVisible] = useState(false);
+  const [accepting, setAccepting] = useState(false);
   
   useEffect(() => {
     if (hydrated && consentGiven === null) {
@@ -17,8 +19,13 @@ export const GDPRConsentModal = () => {
   }, [hydrated, consentGiven]);
 
   const handleConsent = async () => {
-    await setConsentGiven(true);
-    setVisible(false);
+    setAccepting(true);
+    try {
+      await setConsentGiven(true);
+      setVisible(false);
+    } finally {
+      setAccepting(false);
+    }
   };
 
   if (!visible) return null;
@@ -28,7 +35,7 @@ export const GDPRConsentModal = () => {
       <BlurView intensity={80} tint="dark" style={styles.overlay}>
         <View style={styles.container}>
           <LinearGradient
-            colors={['#0f0c29', '#302b63', '#24243e']}
+            colors={GRADIENTS.wrapped}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.card}
@@ -59,8 +66,12 @@ export const GDPRConsentModal = () => {
               </Text>
             </ScrollView>
 
-            <TouchableOpacity style={styles.button} onPress={handleConsent} activeOpacity={0.8}>
-              <Text style={styles.buttonText}>I Understand and Accept</Text>
+            <TouchableOpacity style={[styles.button, accepting && styles.buttonDisabled]} onPress={handleConsent} activeOpacity={CONFIG.LAYOUT.ACTIVE_OPACITY_CARD} disabled={accepting}>
+              {accepting ? (
+                <ActivityIndicator color={COLORS.text.inverse} size="small" />
+              ) : (
+                <Text style={styles.buttonText}>I Understand and Accept</Text>
+              )}
             </TouchableOpacity>
           </LinearGradient>
         </View>
@@ -85,13 +96,13 @@ const styles = StyleSheet.create({
   card: {
     padding: SPACING.l,
     alignItems: 'center',
-    maxHeight: Dimensions.get('window').height * 0.8,
+    maxHeight: '80%',
   },
   iconContainer: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: COLORS.white.alpha10,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: SPACING.m,
@@ -99,7 +110,7 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: FONTS.display,
     fontSize: 24,
-    color: '#fff',
+    color: COLORS.text.primary,
     marginBottom: SPACING.m,
     textAlign: 'center',
   },
@@ -115,7 +126,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.m,
   },
   providerBox: {
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    backgroundColor: COLORS.overlay.providerBox,
     padding: SPACING.m,
     borderRadius: BORDER_RADIUS.m,
     marginBottom: SPACING.m,
@@ -141,9 +152,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
   buttonText: {
     fontFamily: FONTS.bodySemiBold,
     fontSize: 16,
-    color: '#fff',
+    color: COLORS.text.inverse,
   },
 });

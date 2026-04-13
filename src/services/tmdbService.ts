@@ -77,6 +77,7 @@ let cache = new Map<string, CacheEntry>();
 let cacheBytes = 0;
 let activeCount = 0;
 let queue: Array<() => void> = [];
+let inFlightRequests = new Map<string, Promise<any>>();
 
 if (_prev > 0) {
   // Module was re-evaluated (hot reload) — reset everything
@@ -84,6 +85,7 @@ if (_prev > 0) {
   cacheBytes = 0;
   activeCount = 0;
   queue = [];
+  inFlightRequests = new Map();
 }
 
 // Periodic sweep to proactively remove expired entries (once per minute)
@@ -130,6 +132,9 @@ function estimateSize(value: any, depth = 0): number {
 function getCached<T>(key: string): T | null {
   const entry = cache.get(key);
   if (entry && Date.now() - entry.timestamp < CACHE_TTL) {
+    // LRU: Move accessed item to the most-recently-used position
+    cache.delete(key);
+    cache.set(key, entry);
     return entry.data as T;
   }
   if (entry) {
@@ -202,6 +207,20 @@ async function withConcurrencyLimit<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+async function fetchWithDedup<T>(url: string, config?: any): Promise<T> {
+  const requestKey = `${url}_${JSON.stringify(config || {})}`;
+  if (inFlightRequests.has(requestKey)) {
+    return inFlightRequests.get(requestKey) as Promise<T>;
+  }
+
+  const reqPromise = tmdbClient.get<T>(url, config).then(res => res.data).finally(() => {
+    inFlightRequests.delete(requestKey);
+  });
+  
+  inFlightRequests.set(requestKey, reqPromise);
+  return reqPromise;
+}
+
 export const tmdbService = {
   /** Drop all in-memory cached TMDB data */
   clearCache,
@@ -214,20 +233,20 @@ export const tmdbService = {
    */
   search: async (query: string, page: number = 1): Promise<{ results: SearchResult[], hasNextPage: boolean }> => {
     if (useAppStore.getState().isOffline) {
-      return { results: [], hasNextPage: false };
+      throw new Error('OFFLINE');
     }
     try {
-      const response = await tmdbClient.get<TMDBResponse<SearchResult>>('/search/multi', {
+      const data = await fetchWithDedup<TMDBResponse<SearchResult>>('/search/multi', {
         params: { query, page },
       });
       return { 
-        results: response.data.results,
-        hasNextPage: response.data.page < response.data.total_pages
+        results: data.results,
+        hasNextPage: data.page < data.total_pages
       };
     } catch (error) {
       console.error('TMDB Search Error:', sanitizeError(error));
       notifyErrorGlobal('Search failed — check your connection', 'api');
-      return { results: [], hasNextPage: false };
+      throw error;
     }
   },
 
@@ -235,10 +254,14 @@ export const tmdbService = {
    * Get Trending TV Shows
    */
   getTrending: async (): Promise<SearchResult[]> => {
+    const cacheKey = 'trending_tv_week';
+    const cached = getCached<SearchResult[]>(cacheKey);
+    if (cached) return cached;
     if (useAppStore.getState().isOffline) return [];
     try {
-      const response = await tmdbClient.get<TMDBResponse<SearchResult>>('/trending/tv/week');
-      return response.data.results;
+      const data = await fetchWithDedup<TMDBResponse<SearchResult>>('/trending/tv/week');
+      setCache(cacheKey, data.results);
+      return data.results;
     } catch (error) {
       console.error('TMDB Trending Error:', sanitizeError(error));
       notifyErrorGlobal('Could not load trending shows', 'api');
@@ -250,10 +273,14 @@ export const tmdbService = {
    * Get Trending Movies
    */
   getTrendingMovies: async (): Promise<SearchResult[]> => {
+    const cacheKey = 'trending_movie_week';
+    const cached = getCached<SearchResult[]>(cacheKey);
+    if (cached) return cached;
     if (useAppStore.getState().isOffline) return [];
     try {
-      const response = await tmdbClient.get<TMDBResponse<SearchResult>>('/trending/movie/week');
-      return response.data.results;
+      const data = await fetchWithDedup<TMDBResponse<SearchResult>>('/trending/movie/week');
+      setCache(cacheKey, data.results);
+      return data.results;
     } catch (error) {
       console.error('TMDB Trending Movies Error:', sanitizeError(error));
       notifyErrorGlobal('Could not load trending movies', 'api');
@@ -270,8 +297,8 @@ export const tmdbService = {
     if (cached) return cached;
     if (useAppStore.getState().isOffline) return [];
     try {
-      const response = await tmdbClient.get<TMDBResponse<SearchResult>>('/movie/top_rated');
-      const results = response.data.results.map(r => ({ ...r, media_type: 'movie' as const }));
+      const data = await fetchWithDedup<TMDBResponse<SearchResult>>('/movie/top_rated');
+      const results = data.results.map(r => ({ ...r, media_type: 'movie' as const }));
       setCache(cacheKey, results);
       return results;
     } catch (error) {
@@ -290,13 +317,13 @@ export const tmdbService = {
     if (cached) return cached;
     if (useAppStore.getState().isOffline) return { results: [], hasNextPage: false };
     try {
-      const response = await tmdbClient.get<TMDBResponse<SearchResult>>('/discover/movie', {
+      const data = await fetchWithDedup<TMDBResponse<SearchResult>>('/discover/movie', {
         params: { with_genres: genreId, sort_by: 'popularity.desc' },
       });
-      const results = response.data.results.map(r => ({ ...r, media_type: 'movie' as const }));
+      const results = data.results.map(r => ({ ...r, media_type: 'movie' as const }));
       const output = {
         results,
-        hasNextPage: response.data.page < response.data.total_pages
+        hasNextPage: data.page < data.total_pages
       };
       setCache(cacheKey, output);
       return output;
@@ -316,11 +343,11 @@ export const tmdbService = {
     if (cached) return cached;
     if (useAppStore.getState().isOffline) return null;
     try {
-      const [showResponse, externalIds] = await Promise.all([
-        tmdbClient.get<TVShowDetail>(`/tv/${tvId}`, { params: { append_to_response: 'credits' } }),
-        tmdbClient.get<{ imdb_id?: string }>(`/tv/${tvId}/external_ids`),
+      const [showData, externalIdsData] = await Promise.all([
+        fetchWithDedup<TVShowDetail>(`/tv/${tvId}`, { params: { append_to_response: 'credits' } }),
+        fetchWithDedup<{ imdb_id?: string }>(`/tv/${tvId}/external_ids`),
       ]);
-      const result = { ...showResponse.data, external_ids: externalIds.data };
+      const result = { ...showData, external_ids: externalIdsData };
       setCache(cacheKey, result);
       return result;
     } catch (error) {
@@ -339,11 +366,11 @@ export const tmdbService = {
     if (cached) return cached;
     if (useAppStore.getState().isOffline) return null;
     try {
-      const response = await tmdbClient.get<MovieDetail>(`/movie/${movieId}`, {
+      const data = await fetchWithDedup<MovieDetail>(`/movie/${movieId}`, {
         params: { append_to_response: 'credits' }
       });
-      setCache(cacheKey, response.data);
-      return response.data;
+      setCache(cacheKey, data);
+      return data;
     } catch (error) {
       console.error(`TMDB Movie Detail Error (${movieId}):`, sanitizeError(error));
       notifyErrorGlobal('Could not load movie details', 'api');
@@ -360,9 +387,9 @@ export const tmdbService = {
     if (cached) return cached;
     if (useAppStore.getState().isOffline) return null;
     try {
-      const response = await tmdbClient.get<SeasonDetail>(`/tv/${tvId}/season/${seasonNumber}`);
-      setCache(cacheKey, response.data);
-      return response.data;
+      const data = await fetchWithDedup<SeasonDetail>(`/tv/${tvId}/season/${seasonNumber}`);
+      setCache(cacheKey, data);
+      return data;
     } catch (error) {
       console.error(`TMDB Season Detail Error (${tvId} S${seasonNumber}):`, sanitizeError(error));
       notifyErrorGlobal('Could not load season details', 'api');
@@ -379,12 +406,12 @@ export const tmdbService = {
     if (cached) return cached;
     if (useAppStore.getState().isOffline) return null;
     try {
-      const response = await tmdbClient.get<EpisodeDetailData>(
+      const data = await fetchWithDedup<EpisodeDetailData>(
         `/tv/${tvId}/season/${seasonNumber}/episode/${episodeNumber}`,
         { params: { append_to_response: 'credits,images' } }
       );
-      setCache(cacheKey, response.data);
-      return response.data;
+      setCache(cacheKey, data);
+      return data;
     } catch (error) {
       console.error(`TMDB Episode Detail Error (${tvId} S${seasonNumber}E${episodeNumber}):`, sanitizeError(error));
       notifyErrorGlobal('Could not load episode details', 'api');
@@ -399,6 +426,14 @@ export const tmdbService = {
   getImageSource: (path: string | null, size: string = 'w342'): ImageSourcePropType => {
     if (!path) return require('../../assets/no-poster.png');
     return { uri: `${CONFIG.API.TMDB_IMAGE_BASE}${size}${path}` };
+  },
+
+  /**
+   * Get image URL string for use in Image source={{ uri }}
+   */
+  getImageUrl: (path: string | null | undefined, size: string = 'w342'): string => {
+    if (!path) return '';
+    return `${CONFIG.API.TMDB_IMAGE_BASE}${size}${path}`;
   },
 
   /**
@@ -442,11 +477,17 @@ export const tmdbService = {
    * Get the IMDb ID for a specific episode via TMDB external IDs
    */
   getEpisodeImdbId: async (tvId: number, seasonNumber: number, episodeNumber: number): Promise<string | null> => {
+    const cacheKey = `ep_imdb_id_${tvId}_${seasonNumber}_${episodeNumber}`;
+    const cached = getCached<string>(cacheKey);
+    if (cached) return cached;
+    if (useAppStore.getState().isOffline) return null;
     try {
-      const response = await tmdbClient.get<{ imdb_id?: string }>(
+      const data = await fetchWithDedup<{ imdb_id?: string }>(
         `/tv/${tvId}/season/${seasonNumber}/episode/${episodeNumber}/external_ids`
       );
-      return response.data.imdb_id || null;
+      const imdbId = data.imdb_id || null;
+      if (imdbId) setCache(cacheKey, imdbId);
+      return imdbId;
     } catch (error) {
       console.error(`TMDB Episode External IDs Error:`, sanitizeError(error));
       notifyErrorGlobal('Could not fetch external IDs', 'api');
@@ -458,16 +499,25 @@ export const tmdbService = {
    * Get IMDb rating for a specific episode (fetches episode IMDb ID, then queries IMDb GraphQL)
    */
   getIMDbEpisodeRating: async (tvId: number, seasonNumber: number, episodeNumber: number): Promise<{ imdbRating: string; imdbVotes: string } | null> => {
-    return withConcurrencyLimit(async () => {
-      try {
-        const episodeImdbId = await tmdbService.getEpisodeImdbId(tvId, seasonNumber, episodeNumber);
-        if (!episodeImdbId) return null;
-        return await tmdbService.getIMDbRating(episodeImdbId);
-      } catch (error) {
-        console.error('IMDb Episode Rating Error:', sanitizeError(error));
-        return null;
+    try {
+      const episodeImdbId = await tmdbService.getEpisodeImdbId(tvId, seasonNumber, episodeNumber);
+      if (!episodeImdbId) return null;
+      let omdb: { imdbRating: string; imdbVotes: string } | null = null;
+      if (!useAppStore.getState().isOffline) {
+        omdb = await withConcurrencyLimit(() => tmdbService.getIMDbRating(episodeImdbId));
       }
-    });
+      if (!omdb) {
+        const { DetailCache } = require('./DetailCache');
+        return await DetailCache.getCachedIMDbRating(episodeImdbId);
+      } else {
+        const { DetailCache } = require('./DetailCache');
+        DetailCache.cacheIMDbRating(episodeImdbId, omdb);
+        return omdb;
+      }
+    } catch (error) {
+      console.error('IMDb Episode Rating Error:', sanitizeError(error));
+      return null;
+    }
   },
 
   /**
@@ -479,10 +529,10 @@ export const tmdbService = {
     if (cached) return cached;
     if (useAppStore.getState().isOffline) return null;
     try {
-      const response = await tmdbClient.get<{ results: Array<{ key: string; site: string; type: string; official: boolean }> }>(
+      const data = await fetchWithDedup<{ results: Array<{ key: string; site: string; type: string; official: boolean }> }>(
         `/movie/${movieId}/videos`
       );
-      const trailers = response.data.results.filter(
+      const trailers = data.results.filter(
         v => v.site === 'YouTube' && v.type === 'Trailer'
       );
       const key = (trailers.find(t => t.official) || trailers[0])?.key || null;
@@ -503,10 +553,10 @@ export const tmdbService = {
     const cached = getCached<string>(cacheKey);
     if (cached) return cached;
     try {
-      const response = await tmdbClient.get<{ results: Array<{ key: string; site: string; type: string; official: boolean }> }>(
+      const data = await fetchWithDedup<{ results: Array<{ key: string; site: string; type: string; official: boolean }> }>(
         `/tv/${tvId}/videos`
       );
-      const trailers = response.data.results.filter(
+      const trailers = data.results.filter(
         v => v.site === 'YouTube' && v.type === 'Trailer'
       );
       const key = (trailers.find(t => t.official) || trailers[0])?.key || null;

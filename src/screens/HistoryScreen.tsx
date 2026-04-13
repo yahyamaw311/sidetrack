@@ -12,13 +12,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING } from '../constants/theme';
-import { StorageProvider } from '../services/StorageProvider';
+import { CONFIG } from '../constants/config';
 
 import { WatchedEpisodeModal } from '../components/WatchedEpisodeModal';
 import { Snackbar, SnackbarConfig } from '../components/Snackbar';
 import { WatchedEpisode, Episode } from '../types';
 
 import { useHistoryData, UnifiedItem, HistoryMediaType, HistorySortBy } from '../hooks/useHistoryData';
+import { useAppStore } from '../store/appStore';
 import { HistorySkeleton } from '../components/history/HistorySkeletons';
 import {
   HistoryMovieRow,
@@ -74,6 +75,8 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
     setFilterGenre,
     allAvailableGenres,
   } = useHistoryData();
+
+  const storeMarkEpisodeWatched = useAppStore(s => s.markEpisodeWatched);
 
   // Edit episode modal state
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -173,23 +176,22 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
       watchedDate: data.watchedDate.toISOString(),
     };
 
-    await StorageProvider.markEpisodeAsWatched(updated);
+    // Route through the Zustand store for optimistic update + automatic rollback on failure
+    await storeMarkEpisodeWatched(updated);
     setEditModalVisible(false);
     setEditEpisode(null);
     setEditShow(null);
     setEditInitialData(null);
     setEditWatchedEntry(null);
-
-    fetchAndSetHistoryData();
     setSnackbar({ message: `Updated S${updated.seasonNumber}E${updated.episodeNumber}` });
-  }, [editWatchedEntry, fetchAndSetHistoryData]);
+  }, [editWatchedEntry, storeMarkEpisodeWatched]);
 
   const renderBreadcrumb = () => {
     if (tvLevel === 'shows' || !selectedShow) return null;
 
     return (
       <View style={tvStyles.breadcrumb}>
-        <TouchableOpacity onPress={drillBack} style={tvStyles.breadcrumbBack} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Go back to shows list">
+        <TouchableOpacity onPress={drillBack} style={tvStyles.breadcrumbBack} activeOpacity={CONFIG.LAYOUT.ACTIVE_OPACITY} accessibilityRole="button" accessibilityLabel="Go back to shows list">
           <Ionicons name="chevron-back" size={18} color={COLORS.primary} />
         </TouchableOpacity>
 
@@ -203,7 +205,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
         <TouchableOpacity
           onPress={() => onSelectShow?.(selectedShow.seriesId)}
           style={tvStyles.infoButton}
-          activeOpacity={0.7}
+          activeOpacity={CONFIG.LAYOUT.ACTIVE_OPACITY}
           accessibilityRole="button"
           accessibilityLabel={`View details for ${selectedShow.seriesName}`}
         >
@@ -249,7 +251,6 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
             contentContainerStyle={styles.list}
             showsVerticalScrollIndicator={false}
             keyboardDismissMode="on-drag"
-            getItemLayout={(_, index) => ({ length: 64, offset: 64 * index, index })}
           />
         </View>
         <WatchedEpisodeModal
@@ -282,7 +283,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
               setShowFavoritesOnly(!showFavoritesOnly);
             }}
             style={[styles.favFilterBtn, showFavoritesOnly && styles.favFilterBtnActive]}
-            activeOpacity={0.7}
+            activeOpacity={CONFIG.LAYOUT.ACTIVE_OPACITY}
             accessibilityRole="button"
             accessibilityLabel={showFavoritesOnly ? "Show all items" : "Show favorites only"}
             accessibilityState={{ selected: showFavoritesOnly }}
@@ -309,7 +310,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
                     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                     setFilterMediaType(type);
                   }}
-                  activeOpacity={0.7}
+                  activeOpacity={CONFIG.LAYOUT.ACTIVE_OPACITY}
                 >
                   <Text style={[styles.filterChipText, filterMediaType === type && styles.filterChipTextActive]}>
                     {type === 'all' ? 'All' : type === 'movie' ? 'Movies' : 'Shows'}
@@ -328,7 +329,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
                     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                     setSortBy(sort);
                   }}
-                  activeOpacity={0.7}
+                  activeOpacity={CONFIG.LAYOUT.ACTIVE_OPACITY}
                 >
                   <Ionicons
                     name={sort === 'date' ? 'calendar-outline' : sort === 'rating' ? 'star-outline' : 'text-outline'}
@@ -351,7 +352,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
                     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                     setFilterGenre(null);
                   }}
-                  activeOpacity={0.7}
+                  activeOpacity={CONFIG.LAYOUT.ACTIVE_OPACITY}
                 >
                   <Text style={[styles.filterChipText, !filterGenre && styles.filterChipTextActive]}>All Genres</Text>
                 </TouchableOpacity>
@@ -363,7 +364,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
                       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                       setFilterGenre(genre);
                     }}
-                    activeOpacity={0.7}
+                    activeOpacity={CONFIG.LAYOUT.ACTIVE_OPACITY}
                   >
                     <Text style={[styles.filterChipText, filterGenre === genre && styles.filterChipTextActive]}>{genre}</Text>
                   </TouchableOpacity>
@@ -409,7 +410,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
                   : 'Movies and TV shows you watch will appear here'}
             </Text>
             {!showFavoritesOnly && !query && onNavigateToExplore && (
-              <TouchableOpacity style={styles.ctaButton} onPress={onNavigateToExplore} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Browse Explore" accessibilityHint="Double tap to navigate to Explore">
+              <TouchableOpacity style={styles.ctaButton} onPress={onNavigateToExplore} activeOpacity={CONFIG.LAYOUT.ACTIVE_OPACITY_CARD} accessibilityRole="button" accessibilityLabel="Browse Explore" accessibilityHint="Double tap to navigate to Explore">
                 <Ionicons name="compass-outline" size={18} color={COLORS.background} />
                 <Text style={styles.ctaText}>Browse Explore</Text>
               </TouchableOpacity>

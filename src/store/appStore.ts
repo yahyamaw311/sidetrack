@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { StorageProvider } from '../services/StorageProvider';
+import { notifyErrorGlobal } from '../contexts/ErrorNotifier';
 import {
   WatchedMovie,
   WatchedEpisode,
@@ -134,6 +135,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
       // Rollback on persist failure by re-hydrating this slice
       const fresh = await StorageProvider.getWatchedMovies();
       set({ watchedMovies: fresh });
+      notifyErrorGlobal("Couldn't save movie — change reverted", 'storage');
     }
   },
 
@@ -148,6 +150,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
       await StorageProvider.updateWatchedMovie(movie, oldDate);
     } catch {
       set({ watchedMovies: prev });
+      notifyErrorGlobal("Couldn't update movie — change reverted", 'storage');
     }
   },
 
@@ -162,6 +165,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
       await StorageProvider.removeFromWatchedMovies(movieId, watchedDate);
     } catch {
       set({ watchedMovies: prev });
+      notifyErrorGlobal("Couldn't remove movie — change reverted", 'storage');
     }
   },
 
@@ -183,6 +187,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
     } catch {
       const fresh = await StorageProvider.getAllWatchedEpisodes();
       set({ watchedEpisodes: fresh });
+      notifyErrorGlobal("Couldn't save episode — change reverted", 'storage');
     }
   },
 
@@ -195,6 +200,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
       await StorageProvider.removeWatchedEpisode(seriesId, episodeId);
     } catch {
       set({ watchedEpisodes: prev });
+      notifyErrorGlobal("Couldn't remove episode — change reverted", 'storage');
     }
   },
 
@@ -216,6 +222,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
         else next.add(movieId);
         return { favoriteMovieIds: next };
       });
+      notifyErrorGlobal("Couldn't update favorite — change reverted", 'storage');
     }
   },
 
@@ -235,6 +242,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
         else next.add(episodeId);
         return { favoriteEpisodeIds: next };
       });
+      notifyErrorGlobal("Couldn't update favorite — change reverted", 'storage');
     }
   },
 
@@ -250,6 +258,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
     } catch {
       const fresh = await StorageProvider.getWatchlist();
       set({ watchlist: fresh });
+      notifyErrorGlobal("Couldn't update watchlist — change reverted", 'storage');
     }
   },
 
@@ -264,6 +273,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
       await StorageProvider.removeFromWatchlist(itemId, itemType);
     } catch {
       set({ watchlist: prev });
+      notifyErrorGlobal("Couldn't update watchlist — change reverted", 'storage');
     }
   },
 
@@ -280,6 +290,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
     } catch {
       const fresh = await StorageProvider.getCurrentlyWatching();
       set({ currentlyWatching: fresh });
+      notifyErrorGlobal("Couldn't update currently watching — change reverted", 'storage');
     }
   },
 
@@ -292,6 +303,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
       await StorageProvider.removeFromCurrentlyWatching(seriesId);
     } catch {
       set({ currentlyWatching: prev });
+      notifyErrorGlobal("Couldn't update currently watching — change reverted", 'storage');
     }
   },
 }));

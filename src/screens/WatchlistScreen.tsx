@@ -2,12 +2,15 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
+import * as Haptics from 'expo-haptics';
+
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, LETTER_SPACING } from '../constants/theme';
 import { CONFIG } from '../constants/config';
 import { tmdbService } from '../services/tmdbService';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { SkeletonBox } from '../components/SkeletonBox';
 import { FadeImage } from '../components/FadeImage';
+import { Snackbar, SnackbarConfig } from '../components/Snackbar';
 import { QueuedItem } from '../types';
 import { useAppStore } from '../store/appStore';
 
@@ -44,14 +47,17 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
   const storeRemoveFromWatchlist = useAppStore(s => s.removeFromWatchlist);
   const [filter, setFilter] = useState<WatchlistFilter>('all');
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [snackbar, setSnackbar] = useState<SnackbarConfig | null>(null);
 
   const loading = !hydrated;
 
   const handleRemove = useCallback(async (itemId: number, itemType: 'tv' | 'movie') => {
     const key = `${itemType}_${itemId}`;
+    const item = items.find(i => i.itemId === itemId && (i.itemType || 'tv') === itemType);
     setDeletingIds(prev => new Set(prev).add(key));
     try {
       await storeRemoveFromWatchlist(itemId, itemType);
+      setSnackbar({ message: `${item?.name || 'Item'} removed`, type: 'success' });
       await new Promise(resolve => setTimeout(resolve, CONFIG.TIMING.PULL_TO_REFRESH_DELAY));
     } finally {
       setDeletingIds(prev => {
@@ -60,7 +66,7 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
         return next;
       });
     }
-  }, [storeRemoveFromWatchlist]);
+  }, [storeRemoveFromWatchlist, items]);
 
   const formatDate = (isoDate: string) => {
     const date = new Date(isoDate);
@@ -77,9 +83,12 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
       >
         <View>
           <TouchableOpacity
-            onPress={() => onSelectShow(item.itemId, item.itemType || 'tv')}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              onSelectShow(item.itemId, item.itemType || 'tv');
+            }}
             style={[styles.card, isDeleting && { opacity: 0.6 }]}
-            activeOpacity={0.7}
+            activeOpacity={CONFIG.LAYOUT.ACTIVE_OPACITY}
             disabled={isDeleting}
             accessibilityRole="button"
             accessibilityLabel={`${item.name}, ${(item.itemType || 'tv') === 'movie' ? 'Movie' : 'Series'}`}
@@ -112,23 +121,28 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
     );
   }, [handleRemove, onSelectShow, deletingIds]);
 
-  const renderEmpty = () => (
-    <View style={styles.emptyContainer}>
-      <View style={styles.emptyIconWrap}>
-        <Ionicons name="bookmark-outline" size={48} color={COLORS.text.muted} />
+  const renderEmpty = () => {
+    const isFilteredEmpty = items.length > 0 && filteredItems.length === 0;
+    return (
+      <View style={styles.emptyContainer}>
+        <View style={styles.emptyIconWrap}>
+          <Ionicons name={isFilteredEmpty ? "filter-outline" : "bookmark-outline"} size={48} color={COLORS.text.muted} />
+        </View>
+        <Text style={styles.emptyTitle}>
+          {isFilteredEmpty ? `No ${filter === 'movie' ? 'movies' : 'shows'} in your watchlist` : 'Your watchlist is empty'}
+        </Text>
+        <Text style={styles.emptySubtitle}>
+          {isFilteredEmpty ? 'Try a different filter or add some' : 'Add movies and shows you want to watch next'}
+        </Text>
+        {!isFilteredEmpty && onNavigateToExplore && (
+          <TouchableOpacity style={styles.ctaButton} onPress={onNavigateToExplore} activeOpacity={CONFIG.LAYOUT.ACTIVE_OPACITY_CARD} accessibilityRole="button" accessibilityLabel="Browse Explore" accessibilityHint="Double tap to navigate to Explore">
+            <Ionicons name="compass-outline" size={18} color={COLORS.background} />
+            <Text style={styles.ctaText}>Browse Explore</Text>
+          </TouchableOpacity>
+        )}
       </View>
-      <Text style={styles.emptyTitle}>Your watchlist is empty</Text>
-      <Text style={styles.emptySubtitle}>
-        Add movies and shows you want to watch next
-      </Text>
-      {onNavigateToExplore && (
-        <TouchableOpacity style={styles.ctaButton} onPress={onNavigateToExplore} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="Browse Explore" accessibilityHint="Double tap to navigate to Explore">
-          <Ionicons name="compass-outline" size={18} color={COLORS.background} />
-          <Text style={styles.ctaText}>Browse Explore</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
+    );
+  };
 
   const filteredItems = useMemo(() => 
     filter === 'all' ? items : items.filter(i => (i.itemType || 'tv') === filter),
@@ -187,10 +201,10 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
                 colors={[COLORS.primary]}
               />
             }
-            getItemLayout={(_, index) => ({ length: 128, offset: 128 * index, index })}
           />
         )}
       </SafeAreaView>
+      <Snackbar config={snackbar} onDismiss={() => setSnackbar(null)} />
     </View>
   );
 };
@@ -202,7 +216,6 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    paddingTop: CONFIG.LAYOUT.SAFE_AREA_PADDING_TOP,
   },
   header: {
     flexDirection: 'row',
@@ -218,8 +231,8 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   countBadge: {
-    paddingHorizontal: SPACING.s + 2,
-    paddingVertical: 3,
+    paddingHorizontal: SPACING.s,
+    paddingVertical: SPACING.xs,
     borderRadius: BORDER_RADIUS.round,
     backgroundColor: COLORS.primaryMuted,
   },
@@ -236,7 +249,7 @@ const styles = StyleSheet.create({
   },
   filterTab: {
     paddingHorizontal: SPACING.m,
-    paddingVertical: SPACING.xs + 2,
+    paddingVertical: SPACING.xs,
     borderRadius: BORDER_RADIUS.round,
     backgroundColor: COLORS.card,
     borderWidth: 1,
@@ -256,7 +269,7 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: SPACING.m,
-    paddingBottom: 120,
+    paddingBottom: CONFIG.LAYOUT.TAB_BAR_FULL_HEIGHT,
     gap: SPACING.s,
   },
   card: {
@@ -284,8 +297,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   typeBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingHorizontal: SPACING.s,
+    paddingVertical: SPACING.xxs,
     borderRadius: BORDER_RADIUS.xs,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -293,8 +306,8 @@ const styles = StyleSheet.create({
   typeBadgeText: {
     color: COLORS.text.muted,
     fontFamily: FONTS.mono,
-    fontSize: 9,
-    letterSpacing: 1,
+    fontSize: 10,
+    letterSpacing: LETTER_SPACING.wide,
   },
   removeBtn: {
     width: 28,
@@ -305,7 +318,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cardBottom: {
-    gap: 4,
+    gap: SPACING.xs,
   },
   title: {
     color: COLORS.text.primary,
@@ -315,7 +328,7 @@ const styles = StyleSheet.create({
   dateLine: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: SPACING.xs,
   },
   dateText: {
     color: COLORS.text.muted,

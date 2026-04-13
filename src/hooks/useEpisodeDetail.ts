@@ -1,31 +1,26 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { tmdbService } from '../services/tmdbService';
 import { StorageProvider } from '../services/StorageProvider';
 import { DetailCache } from '../services/DetailCache';
-import { useNetwork } from '../contexts/NetworkContext';
 import { useAppStore } from '../store/appStore';
-import { Episode, TVShowDetail, WatchedEpisode, EpisodeDetailData } from '../types';
+import { Episode, WatchedEpisode } from '../types';
 import { SnackbarConfig } from '../components/Snackbar';
 
 export const useEpisodeDetail = (tvId: number, initialSeason?: number, initialEpisode?: number) => {
+  const queryClient = useQueryClient();
   const isMounted = useRef(true);
   useEffect(() => {
     isMounted.current = true;
     return () => { isMounted.current = false; };
   }, []);
 
-  const { isOffline } = useNetwork();
-  const [episode, setEpisode] = useState<EpisodeDetailData | null>(null);
-  const [show, setShow] = useState<TVShowDetail | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [selectedSeason, setSelectedSeason] = useState(initialSeason);
+  const [selectedEpisode, setSelectedEpisode] = useState(initialEpisode);
+  
   const [refreshing, setRefreshing] = useState(false);
-  const [loadError, setLoadError] = useState(false);
-  const [imdbRating, setImdbRating] = useState<string | null>(null);
-  const [imdbVotes, setImdbVotes] = useState<string | null>(null);
-  const [showImdbRating, setShowImdbRating] = useState<string | null>(null);
-  const [showImdbVotes, setShowImdbVotes] = useState<string | null>(null);
-
+  
   const [watchedModalVisible, setWatchedModalVisible] = useState(false);
   const [watchedEpisode, setWatchedEpisode] = useState<Episode | null>(null);
   const [editInitialData, setEditInitialData] = useState<{
@@ -33,7 +28,6 @@ export const useEpisodeDetail = (tvId: number, initialSeason?: number, initialEp
     rewatch?: boolean; noSpoilers?: boolean; watchedDate?: Date;
   } | null>(null);
   const [snackbar, setSnackbar] = useState<SnackbarConfig | null>(null);
-  const [trailerKey, setTrailerKey] = useState<string | null>(null);
 
   // ── Store selectors ──
   const watchlist = useAppStore(s => s.watchlist);
@@ -45,6 +39,86 @@ export const useEpisodeDetail = (tvId: number, initialSeason?: number, initialEp
   const storeRemoveFromWatchlist = useAppStore(s => s.removeFromWatchlist);
   const storeAddToCurrentlyWatching = useAppStore(s => s.addToCurrentlyWatching);
   const storeRemoveFromCurrentlyWatching = useAppStore(s => s.removeFromCurrentlyWatching);
+
+  // React Query Logic
+  const { data: show, isLoading: showLoading, error: showError } = useQuery({
+    queryKey: ['tv', tvId],
+    queryFn: async () => {
+      let data = null;
+      if (!useAppStore.getState().isOffline) {
+        data = await tmdbService.getTVShowDetails(tvId);
+      }
+      if (!data) data = await DetailCache.getCachedTVShowDetail(tvId);
+      else DetailCache.cacheTVShowDetail(tvId, data);
+      
+      if (!data) throw new Error('Show not found');
+      return data;
+    },
+    enabled: !!tvId,
+  });
+
+  const { data: episodeData, isLoading: episodeLoading } = useQuery({
+    queryKey: ['tv', tvId, 'season', selectedSeason, 'episode', selectedEpisode],
+    queryFn: async () => {
+      let data = null;
+      if (!useAppStore.getState().isOffline) {
+        data = await tmdbService.getEpisodeDetails(tvId, selectedSeason!, selectedEpisode!);
+      }
+      if (!data) data = await DetailCache.getCachedEpisodeDetail(tvId, selectedSeason!, selectedEpisode!);
+      else DetailCache.cacheEpisodeDetail(tvId, selectedSeason!, selectedEpisode!, data);
+      return data;
+    },
+    enabled: selectedSeason !== undefined && selectedEpisode !== undefined,
+  });
+
+  const { data: showImdb } = useQuery({
+    queryKey: ['imdb', show?.external_ids?.imdb_id],
+    queryFn: async () => {
+      const imdbId = show!.external_ids!.imdb_id!;
+      let data = null;
+      if (!useAppStore.getState().isOffline) {
+        data = await tmdbService.getIMDbRating(imdbId);
+      }
+      if (!data) data = await DetailCache.getCachedIMDbRating(imdbId);
+      else DetailCache.cacheIMDbRating(imdbId, data);
+      return data;
+    },
+    enabled: !!show?.external_ids?.imdb_id,
+  });
+
+  const { data: epImdb } = useQuery({
+    queryKey: ['tv_ep_imdb', tvId, selectedSeason, selectedEpisode],
+    queryFn: async () => {
+      const imdbId = await tmdbService.getEpisodeImdbId(tvId, selectedSeason!, selectedEpisode!);
+      if (!imdbId) return null;
+      
+      let data = null;
+      if (!useAppStore.getState().isOffline) {
+        data = await tmdbService.getIMDbRating(imdbId);
+      }
+      if (!data) data = await DetailCache.getCachedIMDbRating(imdbId);
+      else DetailCache.cacheIMDbRating(imdbId, data);
+      return data;
+    },
+    enabled: selectedSeason !== undefined && selectedEpisode !== undefined,
+  });
+
+  const { data: trailerKey } = useQuery({
+    queryKey: ['trailer', 'tv', tvId],
+    queryFn: async () => {
+      if (useAppStore.getState().isOffline) return null;
+      return await tmdbService.getTVTrailer(tvId);
+    },
+    enabled: !!tvId && !useAppStore.getState().isOffline,
+  });
+
+  const loading = showLoading || episodeLoading;
+  const loadError = !!showError;
+  const episode = episodeData ?? null;
+  const imdbRating = epImdb?.imdbRating ?? null;
+  const imdbVotes = epImdb?.imdbVotes ?? null;
+  const showImdbRating = showImdb?.imdbRating ?? null;
+  const showImdbVotes = showImdb?.imdbVotes ?? null;
 
   // ── Derived state from store ──
   const isInWatchlist = useMemo(
@@ -65,85 +139,9 @@ export const useEpisodeDetail = (tvId: number, initialSeason?: number, initialEp
     return ids;
   }, [storeEpisodes, tvId]);
 
-  const loadData = useCallback(async (isRefresh = false) => {
-    if (!isRefresh) setLoading(true);
-    setLoadError(false);
-
-    // Attempt network fetch
-    let [seasonData, showData] = await Promise.all([
-      initialSeason !== undefined ? tmdbService.getSeasonDetails(tvId, initialSeason) : Promise.resolve(null),
-      tmdbService.getTVShowDetails(tvId)
-    ]);
-    if (!isMounted.current) return;
-
-    // If network failed, try the offline cache
-    if (!showData) {
-      const cached = await DetailCache.getCachedTVShowDetail(tvId);
-      if (cached) showData = cached;
-    }
-    if (!seasonData && initialSeason !== undefined) {
-      const cached = await DetailCache.getCachedSeasonDetail(tvId, initialSeason);
-      if (cached) seasonData = cached;
-    }
-
-    // Write fresh data to offline cache for next time
-    if (showData) {
-      DetailCache.cacheTVShowDetail(tvId, showData);
-    }
-    if (seasonData && initialSeason !== undefined) {
-      DetailCache.cacheSeasonDetail(tvId, initialSeason, seasonData);
-    }
-
-    if (showData) {
-      setShow(showData);
-
-      // Fetch show-level IMDb rating (non-critical, skip if offline)
-      if (!isOffline) {
-        const showImdbId = showData.external_ids?.imdb_id;
-        if (showImdbId) {
-          const showRating = await tmdbService.getIMDbRating(showImdbId);
-          if (!isMounted.current) return;
-          if (showRating) {
-            setShowImdbRating(showRating.imdbRating);
-            setShowImdbVotes(showRating.imdbVotes);
-          }
-        }
-
-        // Fetch trailer
-        tmdbService.getTVTrailer(tvId).then((key: string | null) => {
-          if (!isMounted.current) return;
-          if (key) setTrailerKey(key);
-        });
-      }
-    }
-
-    if (seasonData && initialSeason !== undefined && initialEpisode !== undefined) {
-      const ep = await tmdbService.getEpisodeDetails(tvId, initialSeason, initialEpisode);
-      if (!isMounted.current) return;
-      setEpisode(ep || null);
-
-      if (ep) {
-        // Fetch episode-specific IMDb rating (non-critical, skip if offline)
-        if (!isOffline) {
-          const omdb = await tmdbService.getIMDbEpisodeRating(tvId, ep.season_number, ep.episode_number);
-          if (!isMounted.current) return;
-          if (omdb) {
-            setImdbRating(omdb.imdbRating);
-            setImdbVotes(omdb.imdbVotes);
-          }
-        }
-      }
-    }
-    if (!showData && (!seasonData && initialSeason !== undefined)) {
-      setLoadError(true);
-    }
-    if (!isMounted.current) return;
-    if (!isRefresh) setLoading(false);
-  }, [tvId, initialSeason, initialEpisode, isOffline]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  const loadData = useCallback(async () => {
+    await queryClient.refetchQueries({ queryKey: ['tv', tvId] });
+  }, [queryClient, tvId]);
 
   const openWatchedModal = useCallback((ep: Episode) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -241,20 +239,8 @@ export const useEpisodeDetail = (tvId: number, initialSeason?: number, initialEp
   };
 
   const selectEpisode = async (ep: Episode) => {
-    // Fetch full episode details including credits
-    const fullEp = await tmdbService.getEpisodeDetails(tvId, ep.season_number, ep.episode_number);
-    if (!isMounted.current) return;
-    setEpisode(fullEp || (ep as EpisodeDetailData));
-
-    // Fetch episode-specific IMDb rating
-    setImdbRating(null);
-    setImdbVotes(null);
-    const omdb = await tmdbService.getIMDbEpisodeRating(tvId, ep.season_number, ep.episode_number);
-    if (!isMounted.current) return;
-    if (omdb) {
-      setImdbRating(omdb.imdbRating);
-      setImdbVotes(omdb.imdbVotes);
-    }
+    setSelectedSeason(ep.season_number);
+    setSelectedEpisode(ep.episode_number);
   };
 
   const toggleWatchlist = async () => {
@@ -283,11 +269,9 @@ export const useEpisodeDetail = (tvId: number, initialSeason?: number, initialEp
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    tmdbService.clearCache();
-    await loadData(true);
-    if (!isMounted.current) return;
+    await queryClient.refetchQueries({ queryKey: ['tv', tvId] });
     setRefreshing(false);
-  }, [loadData]);
+  }, [queryClient, tvId]);
 
   return {
     episode,

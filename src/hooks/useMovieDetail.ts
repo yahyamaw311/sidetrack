@@ -1,27 +1,22 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { tmdbService } from '../services/tmdbService';
 import { DetailCache } from '../services/DetailCache';
-import { useNetwork } from '../contexts/NetworkContext';
 import { useAppStore } from '../store/appStore';
-import { MovieDetail as MovieDetailType, WatchedMovie } from '../types';
+import { WatchedMovie } from '../types';
 import { SnackbarConfig } from '../components/Snackbar';
 
 export const useMovieDetail = (movieId: number) => {
+  const queryClient = useQueryClient();
+  
   const isMounted = useRef(true);
   useEffect(() => {
     isMounted.current = true;
     return () => { isMounted.current = false; };
   }, []);
 
-  const { isOffline } = useNetwork();
-  const [movie, setMovie] = useState<MovieDetailType | null>(null);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [loadError, setLoadError] = useState(false);
-  const [imdbRating, setImdbRating] = useState<string | null>(null);
-  const [imdbVotes, setImdbVotes] = useState<string | null>(null);
-  const [trailerKey, setTrailerKey] = useState<string | null>(null);
   const [trailerPlaying, setTrailerPlaying] = useState(false);
   const [ratingModalVisible, setRatingModalVisible] = useState(false);
   const [snackbar, setSnackbar] = useState<SnackbarConfig | null>(null);
@@ -48,57 +43,60 @@ export const useMovieDetail = (movieId: number) => {
   );
   const isWatched = existingEntry !== null;
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    setLoadError(false);
-    if (movieId) {
-      let data = await tmdbService.getMovieDetails(movieId);
-      if (!isMounted.current) return;
-
-      // If network failed, try offline cache
-      if (!data) {
-        const cached = await DetailCache.getCachedMovieDetail(movieId);
-        if (!isMounted.current) return;
-        if (cached) data = cached;
+  // React Query Fetching
+  const { data: movie, isLoading: loading, error } = useQuery({
+    queryKey: ['movie', movieId],
+    queryFn: async () => {
+      let data = null;
+      if (!useAppStore.getState().isOffline) {
+        data = await tmdbService.getMovieDetails(movieId);
       }
-
-      // Cache fresh data for offline use
-      if (data) {
+      if (!data) {
+        data = await DetailCache.getCachedMovieDetail(movieId);
+      } else {
         DetailCache.cacheMovieDetail(movieId, data);
       }
+      if (!data) throw new Error('Failed to load movie');
+      return data;
+    },
+    enabled: !!movieId,
+  });
 
-      setMovie(data);
-      if (!isMounted.current) return;
-
-      if (data) {
-        // Fetch IMDb rating (non-critical, skip if offline)
-        if (!isOffline && data.imdb_id) {
-          const imdb = await tmdbService.getIMDbRating(data.imdb_id);
-          if (!isMounted.current) return;
-          if (imdb) {
-            setImdbRating(imdb.imdbRating);
-            setImdbVotes(imdb.imdbVotes);
-          }
-        }
-
-        // Fetch trailer (non-critical, skip if offline)
-        if (!isOffline) {
-          tmdbService.getMovieTrailer(movieId).then(key => {
-            if (!isMounted.current) return;
-            if (key) setTrailerKey(key);
-          });
-        }
-      } else {
-        setLoadError(true);
+  const { data: imdbData } = useQuery({
+    queryKey: ['imdb', movie?.imdb_id],
+    queryFn: async () => {
+      const imdbId = movie!.imdb_id!;
+      let data = null;
+      if (!useAppStore.getState().isOffline) {
+        data = await tmdbService.getIMDbRating(imdbId);
       }
-    }
-    if (!isMounted.current) return;
-    setLoading(false);
-  }, [movieId, isOffline]);
+      if (!data) {
+        data = await DetailCache.getCachedIMDbRating(imdbId);
+      } else {
+        DetailCache.cacheIMDbRating(imdbId, data);
+      }
+      return data;
+    },
+    enabled: !!movie?.imdb_id,
+  });
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  const { data: trailerKey } = useQuery({
+    queryKey: ['trailer', movieId],
+    queryFn: async () => {
+      if (useAppStore.getState().isOffline) return null;
+      return await tmdbService.getMovieTrailer(movieId);
+    },
+    enabled: !!movieId && !useAppStore.getState().isOffline,
+  });
+
+  const loadError = !!error;
+  const imdbRating = imdbData?.imdbRating ?? null;
+  const imdbVotes = imdbData?.imdbVotes ?? null;
+
+  // For backward compatibility
+  const loadData = useCallback(async () => {
+    await queryClient.refetchQueries({ queryKey: ['movie', movieId] });
+  }, [queryClient, movieId]);
 
   const toggleWatchlist = async () => {
     if (!movie) return;

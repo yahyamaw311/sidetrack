@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, BackHandler, Animated, Dimensions } from 'react-native';
-import { BlurView } from 'expo-blur';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, BackHandler, Animated, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
+
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, GRADIENTS } from '../constants/theme';
 import { CONFIG, getWrappedUnlockDate } from '../constants/config';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { EpisodeDetail } from '../screens/EpisodeDetail';
@@ -17,9 +17,9 @@ import { SearchResult } from '../types';
 import { NetworkBanner } from '../components/NetworkBanner';
 
 type TabRoute = 'Explore' | 'Watchlist' | 'Log' | 'You';
-const SCREEN_HEIGHT = Dimensions.get('window').height;
 
 export const MainNavigation = () => {
+  const { height: screenHeight } = useWindowDimensions();
   const [activeTab, setActiveTab] = useState<TabRoute>('Explore');
   const [selectedShow, setSelectedShow] = useState<SearchResult | null>(null);
   const [visibleDetail, setVisibleDetail] = useState<SearchResult | null>(null);
@@ -98,6 +98,7 @@ export const MainNavigation = () => {
   }, [activeTab, selectedShow]);
 
   const handleTabChange = (tab: TabRoute) => {
+
     if (tab === activeTab) {
       navHistory.current = [];
       if (visibleDetail) {
@@ -288,7 +289,7 @@ export const MainNavigation = () => {
             {
               opacity: detailAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0.8, 1] }),
               transform: [{
-                translateY: detailAnim.interpolate({ inputRange: [0, 1], outputRange: [SCREEN_HEIGHT * 0.15, 0] }),
+                translateY: detailAnim.interpolate({ inputRange: [0, 1], outputRange: [screenHeight * 0.15, 0] }),
               }, {
                 scale: detailAnim.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1] }),
               }],
@@ -304,7 +305,7 @@ export const MainNavigation = () => {
         </Animated.View>
       )}
 
-      <BlurView intensity={80} tint="dark" style={styles.navBar}>
+      <View style={styles.navBar}>
         <View style={styles.navInner}>
           <TabButton
             icon="compass-outline"
@@ -338,14 +339,14 @@ export const MainNavigation = () => {
             onPress={() => handleTabChange('You')}
           />
         </View>
-      </BlurView>
+      </View>
 
       {/* Wrapped Overlay */}
       {showWrapped && (
         wrappedLocked ? (
           <View style={wrappedOverlayStyles.container}>
             <LinearGradient
-              colors={['#0f0c29', '#302b63', '#24243e']}
+              colors={GRADIENTS.wrapped}
               style={StyleSheet.absoluteFill}
             />
             <TouchableOpacity
@@ -409,9 +410,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
+    backgroundColor: COLORS.overlay.navBar,
     borderTopWidth: 1,
     borderTopColor: COLORS.borderLight,
-    overflow: 'hidden',
   },
   navInner: {
     flexDirection: 'row',
@@ -423,9 +424,9 @@ const styles = StyleSheet.create({
   tabButton: {
     flex: 1,
     alignItems: 'center',
-    gap: 3,
+    gap: SPACING.xs,
     position: 'relative',
-    paddingTop: 6,
+    paddingTop: SPACING.xs,
   },
   activeIndicatorLine: {
     position: 'absolute',
@@ -436,7 +437,7 @@ const styles = StyleSheet.create({
     borderRadius: 1,
   },
   tabLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontFamily: FONTS.bodyMedium,
     color: COLORS.text.muted,
   },
@@ -460,7 +461,7 @@ const wrappedOverlayStyles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(25, 25, 35, 0.8)',
+    backgroundColor: COLORS.overlay.light,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
@@ -489,13 +490,13 @@ const wrappedOverlayStyles = StyleSheet.create({
     lineHeight: 22,
   },
   countdownBox: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: COLORS.white.alpha06,
     borderRadius: BORDER_RADIUS.m,
     paddingHorizontal: SPACING.l,
     paddingVertical: SPACING.m,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: COLORS.white.alpha06,
     marginTop: SPACING.s,
   },
   countdownValue: {
@@ -507,7 +508,7 @@ const wrappedOverlayStyles = StyleSheet.create({
     color: COLORS.text.muted,
     fontFamily: FONTS.body,
     fontSize: 12,
-    marginTop: 4,
+    marginTop: SPACING.xs,
   },
   encourageText: {
     color: COLORS.text.muted,

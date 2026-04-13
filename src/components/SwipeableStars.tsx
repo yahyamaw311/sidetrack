@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { COLORS } from '../constants/theme';
 
+
 const STAR_SIZE = 40;
 const STAR_GAP = 4;
 const STAR_COUNT = 5;
@@ -71,7 +72,7 @@ export const SwipeableStars: React.FC<SwipeableStarsProps> = ({ value, onChange 
                 key={index}
                 name={name}
                 size={STAR_SIZE}
-                color={filled ? '#4ADE80' : COLORS.text.muted}
+                color={filled ? COLORS.starFilled : COLORS.text.muted}
             />
         );
     };

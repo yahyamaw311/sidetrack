@@ -24,8 +24,20 @@ import { DetailCache } from './src/services/DetailCache';
 import { useAppStore } from './src/store/appStore';
 import { COLORS } from './src/constants/theme';
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      gcTime: 10 * 60 * 1000, // 10 minutes
+    },
+  },
+});
 
 export default function App() {
   const [fontsLoaded] = useFonts({
@@ -68,14 +80,16 @@ export default function App() {
     <SafeAreaProvider>
       <NetworkProvider>
         <ErrorNotifierProvider>
-          <ErrorBoundary>
-            <View style={styles.container} onLayout={onLayoutRootView}>
-              <StatusBar barStyle="light-content" backgroundColor={COLORS.background} translucent={false} />
-              <MainNavigation />
-              <GDPRConsentModal />
-              <ApiKeyModal />
-            </View>
-          </ErrorBoundary>
+          <QueryClientProvider client={queryClient}>
+            <ErrorBoundary>
+              <View style={styles.container} onLayout={onLayoutRootView}>
+                <StatusBar barStyle="light-content" backgroundColor={COLORS.background} translucent={false} />
+                <MainNavigation />
+                <GDPRConsentModal />
+                <ApiKeyModal />
+              </View>
+            </ErrorBoundary>
+          </QueryClientProvider>
         </ErrorNotifierProvider>
       </NetworkProvider>
     </SafeAreaProvider>

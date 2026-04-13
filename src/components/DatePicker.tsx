@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
+import { CONFIG } from '../constants/config';
 
 interface DatePickerProps {
   visible: boolean;
@@ -145,7 +146,7 @@ export const DatePickerModal: React.FC<DatePickerProps> = ({ visible, date, onCo
                     ]}
                     onPress={() => selectDay(day)}
                     disabled={isFuture(day)}
-                    activeOpacity={0.6}
+                    activeOpacity={CONFIG.LAYOUT.ACTIVE_OPACITY}
                     accessibilityRole="button"
                     accessibilityLabel={`${MONTHS[viewMonth]} ${day}, ${viewYear}${isToday(day) ? ', today' : ''}`}
                     accessibilityState={{ selected: isSelected(day), disabled: isFuture(day) }}
@@ -189,7 +190,7 @@ export const DatePickerModal: React.FC<DatePickerProps> = ({ visible, date, onCo
 const dpStyles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    backgroundColor: COLORS.overlay.dark,
     justifyContent: 'center',
     alignItems: 'center',
     padding: SPACING.m,

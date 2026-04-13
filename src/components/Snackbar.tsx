@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useCallback } from 'react';
-import { Text, StyleSheet, Animated, Platform } from 'react-native';
+import { Text, StyleSheet, Animated, Platform, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
 
@@ -21,9 +21,9 @@ const ICON_MAP = {
 };
 
 const BG_MAP = {
-    success: 'rgba(45, 212, 168, 0.12)',
-    error: 'rgba(239, 100, 97, 0.12)',
-    info: 'rgba(200, 165, 85, 0.12)',
+    success: COLORS.tealMuted,
+    error: COLORS.coralMuted,
+    info: COLORS.primaryMuted,
 };
 
 export const Snackbar: React.FC<SnackbarProps> = ({ config, onDismiss }) => {
@@ -67,10 +67,16 @@ export const Snackbar: React.FC<SnackbarProps> = ({ config, onDismiss }) => {
     return (
         <Animated.View
             style={[styles.container, { backgroundColor: bg, transform: [{ translateY }], opacity }]}
-            pointerEvents="none"
+            pointerEvents="box-none"
         >
-            <Ionicons name={icon.name} size={20} color={icon.color} />
-            <Text style={[styles.message, { color: icon.color }]}>{config.message}</Text>
+            <TouchableOpacity
+                style={styles.touchable}
+                onPress={hide}
+                activeOpacity={0.8}
+            >
+                <Ionicons name={icon.name} size={20} color={icon.color} />
+                <Text style={[styles.message, { color: icon.color }]}>{config.message}</Text>
+            </TouchableOpacity>
         </Animated.View>
     );
 };
@@ -81,16 +87,19 @@ const styles = StyleSheet.create({
         bottom: Platform.OS === 'android' ? 72 : 88,
         left: SPACING.m,
         right: SPACING.m,
+        paddingHorizontal: SPACING.m,
+        paddingVertical: SPACING.s,
+        borderRadius: BORDER_RADIUS.m,
+        borderWidth: 1,
+        borderColor: COLORS.white.alpha06,
+        zIndex: 9999,
+        elevation: 10,
+    },
+    touchable: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: SPACING.s,
-        paddingHorizontal: SPACING.m,
-        paddingVertical: SPACING.s + 2,
-        borderRadius: BORDER_RADIUS.m,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.06)',
-        zIndex: 9999,
-        elevation: 10,
+        flex: 1,
     },
     message: {
         fontFamily: FONTS.bodyMedium,

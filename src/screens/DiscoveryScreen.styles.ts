@@ -1,6 +1,7 @@
 import { StyleSheet } from 'react-native';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, LETTER_SPACING } from '../constants/theme';
 import { CONFIG } from '../constants/config';
+// Bottom padding for lists is centralized via CONFIG.LAYOUT.TAB_BAR_FULL_HEIGHT
 
 export const styles = StyleSheet.create({
   container: {
@@ -9,7 +10,6 @@ export const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-    paddingTop: CONFIG.LAYOUT.SAFE_AREA_PADDING_TOP,
   },
   centered: {
     flex: 1,
@@ -59,7 +59,7 @@ export const styles = StyleSheet.create({
     fontSize: 15,
   },
   clearButton: {
-    padding: 4,
+    padding: SPACING.xs,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -79,7 +79,7 @@ export const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.text.secondary,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: LETTER_SPACING.wide,
   },
   recentClear: {
     fontFamily: FONTS.body,
@@ -117,11 +117,11 @@ export const styles = StyleSheet.create({
     fontFamily: FONTS.body,
     fontSize: 12,
     color: COLORS.text.muted,
-    marginTop: 2,
+    marginTop: SPACING.xxs,
   },
   searchList: {
     paddingHorizontal: SPACING.m,
-    paddingBottom: 100,
+    paddingBottom: CONFIG.LAYOUT.TAB_BAR_FULL_HEIGHT,
   },
   searchResultCard: {
     flexDirection: 'row',
@@ -154,7 +154,7 @@ export const styles = StyleSheet.create({
   searchRatingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: SPACING.s,
   },
   searchRatingText: {
     color: COLORS.text.secondary,
@@ -167,7 +167,7 @@ export const styles = StyleSheet.create({
     fontSize: 14,
   },
   scrollContent: {
-    paddingBottom: 120, // Keep this for now or find SPACING match
+    paddingBottom: CONFIG.LAYOUT.TAB_BAR_FULL_HEIGHT,
   },
   section: {
     marginBottom: SPACING.xl,
@@ -189,7 +189,7 @@ export const styles = StyleSheet.create({
     color: COLORS.text.primary,
     fontFamily: FONTS.heading,
     fontSize: 14,
-    letterSpacing: 1,
+    letterSpacing: LETTER_SPACING.wide,
     textTransform: 'uppercase',
   },
   spotlightList: {
@@ -229,7 +229,7 @@ export const styles = StyleSheet.create({
   spotlightMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: SPACING.xs,
   },
   spotlightRating: {
     color: COLORS.text.secondary,
@@ -266,7 +266,7 @@ export const styles = StyleSheet.create({
   genreChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: SPACING.s,
     paddingHorizontal: SPACING.m,
     paddingVertical: SPACING.s,
     borderRadius: BORDER_RADIUS.round,

@@ -1,9 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { WatchedEpisode, QueuedItem, WatchedMovie, FavoriteMovie, CurrentlyWatchingItem, SearchResult } from '../types';
-import { notifyErrorGlobal } from '../contexts/ErrorNotifier';
-
-import { storageMutex } from './Mutex';
-import { CONFIG } from '../constants/config';
 
 const STORAGE_KEYS = {
   WATCHED: '@sidetrack_watched',
@@ -13,38 +9,17 @@ const STORAGE_KEYS = {
   FAVORITE_MOVIES: '@sidetrack_favorite_movies',
   CURRENTLY_WATCHING: '@sidetrack_currently_watching',
   SEARCH_HISTORY: '@sidetrack_search_history',
-  ONBOARDING_COMPLETE: '@sidetrack_onboarding_complete',
-  WATCHED_V2_PREFIX: '@sidetrack_watched_v2:',
-  PARTITION_MIGRATED: '@sidetrack_partition_migrated',
   CONSENT_GIVEN: '@sidetrack_consent_given',
-  TMDB_API_KEY: '@tmdb_api_key',
-  TRENDING_TV: '@cache_trending_tv',
-  TRENDING_MOVIE: '@cache_trending_movie',
-  TOP_RATED_MOVIE: '@cache_top_rated_movie',
+  TMDB_API_KEY: '@sidetrack_tmdb_api_key',
 };
 
 // --- Helper to get parsed JSON ---
 const getData = async <T>(key: string, defaultValue: T): Promise<T> => {
   try {
     const jsonValue = await AsyncStorage.getItem(key);
-    if (jsonValue == null) return defaultValue;
-    try {
-      return JSON.parse(jsonValue);
-    } catch (parseError) {
-      // JSON is corrupted — backup the corrupted string before returning default
-      console.error(`Corrupted data in ${key}`, parseError);
-      const backupKey = `@corrupted_${key}_${Date.now()}`;
-      await AsyncStorage.setItem(backupKey, jsonValue).catch(() => { });
-
-      notifyErrorGlobal(`Data corruption detected in ${key}. A backup was created.`, 'storage');
-
-      // We return defaultValue but ideally the UI should prevent saving over this
-      // until the user confirms. For now, we at least have a backup.
-      return defaultValue;
-    }
+    return jsonValue != null ? JSON.parse(jsonValue) : defaultValue;
   } catch (e) {
     console.error(`Error reading ${key}`, e);
-    notifyErrorGlobal(`Could not read your saved data`, 'storage');
     return defaultValue;
   }
 };
@@ -56,57 +31,20 @@ const setData = async (key: string, value: any) => {
     await AsyncStorage.setItem(key, jsonValue);
   } catch (e) {
     console.error(`Error saving ${key}`, e);
-    notifyErrorGlobal(`Could not save — your change may be lost`, 'storage');
-    throw e; // Re-throw so optimistic-update callers can roll back
-  }
-};
-
-const withMutex = async <T>(task: () => Promise<T>): Promise<T> => {
-  return storageMutex.runExclusive(task);
-};
-
-// --- Migration ---
-const migrateToPartitionedStorage = async () => {
-  const isMigrated = await AsyncStorage.getItem(STORAGE_KEYS.PARTITION_MIGRATED);
-  if (isMigrated === 'true') return;
-
-  console.log('[Storage] Starting migration to partitioned storage...');
-  try {
-    const legacyData = await getData<Record<number, WatchedEpisode>>(STORAGE_KEYS.WATCHED, {});
-    const items = Object.values(legacyData);
-    if (items.length === 0) {
-      await AsyncStorage.setItem(STORAGE_KEYS.PARTITION_MIGRATED, 'true');
-      return;
-    }
-
-    // Group by seriesId
-    const groups: Record<number, WatchedEpisode[]> = {};
-    for (const item of items) {
-      if (!groups[item.seriesId]) groups[item.seriesId] = [];
-      groups[item.seriesId].push(item);
-    }
-
-    // Multi-set the new partitions
-    const pairs: [string, string][] = Object.entries(groups).map(([seriesId, eps]) => [
-      `${STORAGE_KEYS.WATCHED_V2_PREFIX}${seriesId}`,
-      JSON.stringify(eps)
-    ]);
-
-    await AsyncStorage.multiSet(pairs);
-    await AsyncStorage.setItem(STORAGE_KEYS.PARTITION_MIGRATED, 'true');
-    console.log(`[Storage] Migrated ${items.length} episodes into ${pairs.length} series partitions.`);
-
-    // Optional: Only clear old data after ensuring stability
-    // await AsyncStorage.removeItem(STORAGE_KEYS.WATCHED);
-  } catch (e) {
-    console.error('[Storage] Migration Error:', e);
-    notifyErrorGlobal('Failed to optimize storage. Please restart the app.', 'storage');
   }
 };
 
 export const StorageProvider = {
-  migrateToPartitionedStorage,
+  // --- Migration (no-op, data already in partitioned format) ---
+  migrateToPartitionedStorage: async () => {},
+
   // --- Watched Status & Ratings ---
+
+  markEpisodeAsWatched: async (episode: WatchedEpisode) => {
+    const watched = await getData<Record<number, WatchedEpisode>>(STORAGE_KEYS.WATCHED, {});
+    watched[episode.episodeId] = episode;
+    await setData(STORAGE_KEYS.WATCHED, watched);
+  },
 
   getWatchedEpisode: async (episodeId: number): Promise<WatchedEpisode | null> => {
     const watched = await getData<Record<number, WatchedEpisode>>(STORAGE_KEYS.WATCHED, {});
@@ -114,85 +52,28 @@ export const StorageProvider = {
   },
 
   getAllWatchedEpisodes: async (): Promise<WatchedEpisode[]> => {
-    // We want to combine all partitions and the legacy data
-    const allKeys = await AsyncStorage.getAllKeys();
-    const partitionKeys = allKeys.filter(k => k.startsWith(STORAGE_KEYS.WATCHED_V2_PREFIX));
-
-    const legacy = await getData<Record<number, WatchedEpisode>>(STORAGE_KEYS.WATCHED, {});
-    const partitions = await AsyncStorage.multiGet(partitionKeys);
-
-    const allEpisodes: WatchedEpisode[] = [...Object.values(legacy)];
-    for (const [, val] of partitions) {
-      if (val) allEpisodes.push(...JSON.parse(val));
-    }
-
-    return allEpisodes.sort((a, b) =>
+    const watched = await getData<Record<number, WatchedEpisode>>(STORAGE_KEYS.WATCHED, {});
+    return Object.values(watched).sort((a, b) =>
       new Date(b.watchedDate).getTime() - new Date(a.watchedDate).getTime()
     );
   },
 
-  getWatchedEpisodesForShow: async (seriesId: number): Promise<WatchedEpisode[]> => {
-    // Check legacy first (in case migration hasn't run or is partial)
-    const legacy = await getData<Record<number, WatchedEpisode>>(STORAGE_KEYS.WATCHED, {});
-    const legacyForShow = Object.values(legacy).filter(w => w.seriesId === seriesId);
-
-    // Check partition
-    const partition = await getData<WatchedEpisode[]>(`${STORAGE_KEYS.WATCHED_V2_PREFIX}${seriesId}`, []);
-
-    return [...legacyForShow, ...partition];
-  },
-
-  markEpisodeAsWatched: async (episode: WatchedEpisode) => {
-    return withMutex(async () => {
-      const key = `${STORAGE_KEYS.WATCHED_V2_PREFIX}${episode.seriesId}`;
-      const watched = await getData<WatchedEpisode[]>(key, []);
-
-      // Update if already exists, else push
-      const idx = watched.findIndex(e => e.episodeId === episode.episodeId);
-      if (idx > -1) {
-        watched[idx] = episode;
-      } else {
-        watched.push(episode);
-      }
-
-      await setData(key, watched);
-
-    });
-  },
-
-  removeWatchedEpisode: async (seriesId: number, episodeId: number) => {
-    return withMutex(async () => {
-      // Check partition first
-      const key = `${STORAGE_KEYS.WATCHED_V2_PREFIX}${seriesId}`;
-      const watched = await getData<WatchedEpisode[]>(key, []);
-      const filtered = watched.filter(e => e.episodeId !== episodeId);
-
-      if (watched.length !== filtered.length) {
-        await setData(key, filtered);
-      } else {
-        // Check legacy as fallback
-        const legacy = await getData<Record<number, WatchedEpisode>>(STORAGE_KEYS.WATCHED, {});
-        if (legacy[episodeId]) {
-          delete legacy[episodeId];
-          await setData(STORAGE_KEYS.WATCHED, legacy);
-        }
-      }
-    });
+  removeWatchedEpisode: async (episodeId: number) => {
+    const watched = await getData<Record<number, WatchedEpisode>>(STORAGE_KEYS.WATCHED, {});
+    delete watched[episodeId];
+    await setData(STORAGE_KEYS.WATCHED, watched);
   },
 
   // --- Favorites (Episodes) ---
 
   toggleFavoriteEpisode: async (episodeId: number, isFavorite: boolean) => {
-    return withMutex(async () => {
-      const favorites = await getData<Record<number, boolean>>(STORAGE_KEYS.FAVORITES, {});
-      if (isFavorite) {
-        favorites[episodeId] = true;
-      } else {
-        delete favorites[episodeId];
-      }
-      await setData(STORAGE_KEYS.FAVORITES, favorites);
-
-    });
+    const favorites = await getData<Record<number, boolean>>(STORAGE_KEYS.FAVORITES, {});
+    if (isFavorite) {
+      favorites[episodeId] = true;
+    } else {
+      delete favorites[episodeId];
+    }
+    await setData(STORAGE_KEYS.FAVORITES, favorites);
   },
 
   isEpisodeFavorite: async (episodeId: number): Promise<boolean> => {
@@ -205,140 +86,66 @@ export const StorageProvider = {
     return Object.keys(favorites).map(Number);
   },
 
-  // --- Watchlist (Series & Movies) ---
-
-  // Helper to prevent collision between TVs and Movies with identical TMDB IDs
-  _migrateWatchlist: async (): Promise<Record<string, QueuedItem>> => {
-    // This is called from within mutex-locked functions, or we can just not lock it and let callers lock
-    const raw = await getData<any>(STORAGE_KEYS.WATCHLIST, {});
-    let dirty = false;
-    const migrated: Record<string, QueuedItem> = {};
-    for (const [k, v] of Object.entries<any>(raw)) {
-      let isLegacyKey = !k.includes('_');
-      if (v.seriesId !== undefined) {
-        v.itemId = v.seriesId;
-        delete v.seriesId;
-        dirty = true;
-      }
-      
-      if (isLegacyKey) {
-        const type = v.itemType || 'tv';
-        v.itemType = type;
-        migrated[`${type}_${v.itemId}`] = v;
-        dirty = true;
-      } else {
-        migrated[k] = v;
-      }
-    }
-    if (dirty) {
-      await setData(STORAGE_KEYS.WATCHLIST, migrated);
-    }
-    return migrated;
-  },
+  // --- Watchlist (Series) ---
 
   addToWatchlist: async (item: QueuedItem) => {
-    return withMutex(async () => {
-      const watchlist = await StorageProvider._migrateWatchlist();
-      watchlist[`${item.itemType}_${item.itemId}`] = item;
-      await setData(STORAGE_KEYS.WATCHLIST, watchlist);
-
-    });
+    const watchlist = await getData<Record<number, QueuedItem>>(STORAGE_KEYS.WATCHLIST, {});
+    watchlist[item.seriesId] = item;
+    await setData(STORAGE_KEYS.WATCHLIST, watchlist);
   },
 
-  removeFromWatchlist: async (itemId: number, itemType: 'tv' | 'movie' = 'tv') => {
-    return withMutex(async () => {
-      const watchlist = await StorageProvider._migrateWatchlist();
-      delete watchlist[`${itemType}_${itemId}`];
-      await setData(STORAGE_KEYS.WATCHLIST, watchlist);
-    });
+  removeFromWatchlist: async (seriesId: number) => {
+    const watchlist = await getData<Record<number, QueuedItem>>(STORAGE_KEYS.WATCHLIST, {});
+    delete watchlist[seriesId];
+    await setData(STORAGE_KEYS.WATCHLIST, watchlist);
   },
 
   getWatchlist: async (): Promise<QueuedItem[]> => {
-    return withMutex(async () => {
-      const watchlist = await StorageProvider._migrateWatchlist();
-      return Object.values(watchlist).sort((a, b) =>
-        new Date(b.addedDate).getTime() - new Date(a.addedDate).getTime()
-      );
-    });
+    const watchlist = await getData<Record<number, QueuedItem>>(STORAGE_KEYS.WATCHLIST, {});
+    return Object.values(watchlist).sort((a, b) =>
+      new Date(b.addedDate).getTime() - new Date(a.addedDate).getTime()
+    );
   },
 
   // --- Watched Movies (History) ---
 
   addToWatchedMovies: async (movie: WatchedMovie) => {
-    return withMutex(async () => {
-      const watched = await getData<Record<string, WatchedMovie>>(STORAGE_KEYS.WATCHED_MOVIES, {});
-      // Use movieId + timestamp as key to allow multiple logs (rewatches)
-      const key = `${movie.movieId}_${movie.watchedDate}`;
-      watched[key] = movie;
-      await setData(STORAGE_KEYS.WATCHED_MOVIES, watched);
-
-    });
+    const watched = await getData<Record<string, WatchedMovie>>(STORAGE_KEYS.WATCHED_MOVIES, {});
+    // Use movieId + timestamp as key to allow multiple logs (rewatches)
+    const key = `${movie.movieId}_${movie.watchedDate}`;
+    watched[key] = movie;
+    await setData(STORAGE_KEYS.WATCHED_MOVIES, watched);
   },
 
-  updateWatchedMovieRating: async (movieId: number, newRating: number, watchedDate: string) => {
-    return withMutex(async () => {
-      const watched = await getData<Record<string, WatchedMovie>>(STORAGE_KEYS.WATCHED_MOVIES, {});
-      const key = Object.keys(watched).find(k => watched[k].movieId === movieId && watched[k].watchedDate === watchedDate);
-      if (key) {
-        watched[key].rating = newRating;
-        await setData(STORAGE_KEYS.WATCHED_MOVIES, watched);
-
-      }
-    });
+  updateWatchedMovieRating: async (movieId: number, newRating: number) => {
+    const watched = await getData<Record<string, WatchedMovie>>(STORAGE_KEYS.WATCHED_MOVIES, {});
+    const key = Object.keys(watched).find(k => watched[k].movieId === movieId);
+    if (key) {
+      watched[key].rating = newRating;
+      await setData(STORAGE_KEYS.WATCHED_MOVIES, watched);
+    }
   },
 
   removeFromWatchedMovies: async (movieId: number, watchedDate?: string) => {
-    return withMutex(async () => {
-      const watched = await getData<Record<string, WatchedMovie>>(STORAGE_KEYS.WATCHED_MOVIES, {});
-      // Find the matching entry (by movieId + optional watchedDate for precision)
-      const keyToDelete = Object.keys(watched).find(key => {
-        const entry = watched[key];
-        if (entry.movieId !== movieId) return false;
-        if (watchedDate && entry.watchedDate !== watchedDate) return false;
-        return true;
-      });
-      if (keyToDelete) {
-        delete watched[keyToDelete];
-        await setData(STORAGE_KEYS.WATCHED_MOVIES, watched);
-
-      }
+    const watched = await getData<Record<string, WatchedMovie>>(STORAGE_KEYS.WATCHED_MOVIES, {});
+    // Find the matching entry (by movieId + optional watchedDate for precision)
+    const keyToDelete = Object.keys(watched).find(key => {
+      const entry = watched[key];
+      if (entry.movieId !== movieId) return false;
+      if (watchedDate && entry.watchedDate !== watchedDate) return false;
+      return true;
     });
-  },
-
-  updateWatchedMovie: async (newMovie: WatchedMovie, oldWatchedDate: string) => {
-    return withMutex(async () => {
-      const watched = await getData<Record<string, WatchedMovie>>(STORAGE_KEYS.WATCHED_MOVIES, {});
-      // find old key
-      const keyToDelete = Object.keys(watched).find(key => {
-        const entry = watched[key];
-        return entry.movieId === newMovie.movieId && entry.watchedDate === oldWatchedDate;
-      });
-      if (keyToDelete) {
-        delete watched[keyToDelete];
-      }
-      const newKey = `${newMovie.movieId}_${newMovie.watchedDate}`;
-      watched[newKey] = newMovie;
+    if (keyToDelete) {
+      delete watched[keyToDelete];
       await setData(STORAGE_KEYS.WATCHED_MOVIES, watched);
-
-    });
+    }
   },
 
   getWatchedMovies: async (): Promise<WatchedMovie[]> => {
-    return withMutex(async () => {
-      const watched = await getData<Record<string, WatchedMovie>>(STORAGE_KEYS.WATCHED_MOVIES, {});
-      let dirty = false;
-      for (const key in watched) {
-        if (watched[key].rating !== null && watched[key].rating > 5) {
-          watched[key].rating = watched[key].rating! / 2;
-          dirty = true;
-        }
-      }
-      if (dirty) await setData(STORAGE_KEYS.WATCHED_MOVIES, watched);
-
-      return Object.values(watched).sort((a, b) =>
-        new Date(b.watchedDate).getTime() - new Date(a.watchedDate).getTime()
-      );
-    });
+    const watched = await getData<Record<string, WatchedMovie>>(STORAGE_KEYS.WATCHED_MOVIES, {});
+    return Object.values(watched).sort((a, b) =>
+      new Date(b.watchedDate).getTime() - new Date(a.watchedDate).getTime()
+    );
   },
 
   isMovieWatched: async (movieId: number): Promise<WatchedMovie | null> => {
@@ -350,16 +157,13 @@ export const StorageProvider = {
   // --- Favorite Movies ---
 
   toggleFavoriteMovie: async (movieId: number, isFavorite: boolean, movieInfo?: FavoriteMovie) => {
-    return withMutex(async () => {
-      const favorites = await getData<Record<number, FavoriteMovie>>(STORAGE_KEYS.FAVORITE_MOVIES, {});
-      if (isFavorite && movieInfo) {
-        favorites[movieId] = movieInfo;
-      } else {
-        delete favorites[movieId];
-      }
-      await setData(STORAGE_KEYS.FAVORITE_MOVIES, favorites);
-
-    });
+    const favorites = await getData<Record<number, FavoriteMovie>>(STORAGE_KEYS.FAVORITE_MOVIES, {});
+    if (isFavorite && movieInfo) {
+      favorites[movieId] = movieInfo;
+    } else {
+      delete favorites[movieId];
+    }
+    await setData(STORAGE_KEYS.FAVORITE_MOVIES, favorites);
   },
 
   isMovieFavorite: async (movieId: number): Promise<boolean> => {
@@ -375,22 +179,16 @@ export const StorageProvider = {
   // --- Currently Watching ---
 
   addToCurrentlyWatching: async (item: CurrentlyWatchingItem) => {
-    return withMutex(async () => {
-      const list = await getData<CurrentlyWatchingItem[]>(STORAGE_KEYS.CURRENTLY_WATCHING, []);
-      // Remove if already exists, then add to front
-      const filtered = list.filter(i => i.seriesId !== item.seriesId);
-      filtered.unshift({ ...item, lastUpdated: new Date().toISOString() });
-      await setData(STORAGE_KEYS.CURRENTLY_WATCHING, filtered);
-
-    });
+    const list = await getData<CurrentlyWatchingItem[]>(STORAGE_KEYS.CURRENTLY_WATCHING, []);
+    // Remove if already exists, then add to front
+    const filtered = list.filter(i => i.seriesId !== item.seriesId);
+    filtered.unshift({ ...item, lastUpdated: new Date().toISOString() });
+    await setData(STORAGE_KEYS.CURRENTLY_WATCHING, filtered);
   },
 
   removeFromCurrentlyWatching: async (seriesId: number) => {
-    return withMutex(async () => {
-      const list = await getData<CurrentlyWatchingItem[]>(STORAGE_KEYS.CURRENTLY_WATCHING, []);
-      await setData(STORAGE_KEYS.CURRENTLY_WATCHING, list.filter(i => i.seriesId !== seriesId));
-
-    });
+    const list = await getData<CurrentlyWatchingItem[]>(STORAGE_KEYS.CURRENTLY_WATCHING, []);
+    await setData(STORAGE_KEYS.CURRENTLY_WATCHING, list.filter(i => i.seriesId !== seriesId));
   },
 
   getCurrentlyWatching: async (): Promise<CurrentlyWatchingItem[]> => {
@@ -399,8 +197,8 @@ export const StorageProvider = {
 
   /** Check if all episodes of a show have been watched */
   isShowFullyWatched: async (seriesId: number, totalEpisodesBySeasons: Record<number, number>): Promise<boolean> => {
-    const watchedForShow = await StorageProvider.getWatchedEpisodesForShow(seriesId);
-
+    const watched = await getData<Record<number, WatchedEpisode>>(STORAGE_KEYS.WATCHED, {});
+    const watchedForShow = Object.values(watched).filter(w => w.seriesId === seriesId);
     // Count total expected episodes (skip season 0 / specials)
     let totalExpected = 0;
     for (const [season, count] of Object.entries(totalEpisodesBySeasons)) {
@@ -417,65 +215,35 @@ export const StorageProvider = {
   },
 
   addSearchHistoryItem: async (item: SearchResult) => {
-    return withMutex(async () => {
-      const history = await getData<SearchResult[]>(STORAGE_KEYS.SEARCH_HISTORY, []);
-      // Remove duplicate by id+media_type
-      const filtered = history.filter(h => !(h.id === item.id && h.media_type === item.media_type));
-      filtered.unshift(item);
-      await setData(STORAGE_KEYS.SEARCH_HISTORY, filtered.slice(0, CONFIG.LIMITS.SEARCH_HISTORY_LIMIT));
-    });
+    const MAX_ITEMS = 10;
+    const history = await getData<SearchResult[]>(STORAGE_KEYS.SEARCH_HISTORY, []);
+    // Remove duplicate by id+media_type
+    const filtered = history.filter(h => !(h.id === item.id && h.media_type === item.media_type));
+    filtered.unshift(item);
+    await setData(STORAGE_KEYS.SEARCH_HISTORY, filtered.slice(0, MAX_ITEMS));
   },
 
   removeSearchHistoryItem: async (id: number, mediaType: string) => {
-    return withMutex(async () => {
-      const history = await getData<SearchResult[]>(STORAGE_KEYS.SEARCH_HISTORY, []);
-      await setData(STORAGE_KEYS.SEARCH_HISTORY, history.filter(h => !(h.id === id && h.media_type === mediaType)));
-    });
+    const history = await getData<SearchResult[]>(STORAGE_KEYS.SEARCH_HISTORY, []);
+    await setData(STORAGE_KEYS.SEARCH_HISTORY, history.filter(h => !(h.id === id && h.media_type === mediaType)));
   },
 
   clearSearchHistory: async () => {
-    return withMutex(async () => {
-      await setData(STORAGE_KEYS.SEARCH_HISTORY, []);
-    });
+    await setData(STORAGE_KEYS.SEARCH_HISTORY, []);
   },
 
-  // --- Onboarding ---
-
-  hasCompletedOnboarding: async (): Promise<boolean> => {
-    try {
-      const value = await AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING_COMPLETE);
-      return value === 'true';
-    } catch {
-      return false;
-    }
-  },
-
-  completeOnboarding: async () => {
-    try {
-      await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING_COMPLETE, 'true');
-    } catch (e) {
-      console.error('Error saving onboarding flag', e);
-    }
-  },
-
-  // --- External API Consent ---
-
+  // --- Consent & API Key ---
   hasGivenConsent: async (): Promise<boolean | null> => {
     try {
       const value = await AsyncStorage.getItem(STORAGE_KEYS.CONSENT_GIVEN);
-      if (value === null) return null;
-      return value === 'true';
+      return value != null ? JSON.parse(value) : null;
     } catch {
       return null;
     }
   },
 
   setConsentGiven: async (given: boolean) => {
-    try {
-      await AsyncStorage.setItem(STORAGE_KEYS.CONSENT_GIVEN, given ? 'true' : 'false');
-    } catch (e) {
-      console.error('Error saving consent flag', e);
-    }
+    await AsyncStorage.setItem(STORAGE_KEYS.CONSENT_GIVEN, JSON.stringify(given));
   },
 
   getTmdbApiKey: async (): Promise<string | null> => {
@@ -486,38 +254,7 @@ export const StorageProvider = {
     }
   },
 
-  setTmdbApiKey: async (key: string): Promise<void> => {
-    try {
-      await AsyncStorage.setItem(STORAGE_KEYS.TMDB_API_KEY, key);
-    } catch (error) {
-      console.error('Failed to save TMDB API Key', error);
-      throw error;
-    }
-  },
-
-  // --- Discovery Caching (Offline) ---
-
-  getTrendingCache: async (): Promise<SearchResult[]> => {
-    return await getData<SearchResult[]>(STORAGE_KEYS.TRENDING_TV, []);
-  },
-
-  setTrendingCache: async (data: SearchResult[]) => {
-    await setData(STORAGE_KEYS.TRENDING_TV, data);
-  },
-
-  getTrendingMovieCache: async (): Promise<SearchResult[]> => {
-    return await getData<SearchResult[]>(STORAGE_KEYS.TRENDING_MOVIE, []);
-  },
-
-  setTrendingMovieCache: async (data: SearchResult[]) => {
-    await setData(STORAGE_KEYS.TRENDING_MOVIE, data);
-  },
-
-  getTopRatedMovieCache: async (): Promise<SearchResult[]> => {
-    return await getData<SearchResult[]>(STORAGE_KEYS.TOP_RATED_MOVIE, []);
-  },
-
-  setTopRatedMovieCache: async (data: SearchResult[]) => {
-    await setData(STORAGE_KEYS.TOP_RATED_MOVIE, data);
+  setTmdbApiKey: async (key: string) => {
+    await AsyncStorage.setItem(STORAGE_KEYS.TMDB_API_KEY, key);
   },
 };

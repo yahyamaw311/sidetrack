@@ -19,6 +19,7 @@ export const useSearch = () => {
   const [searching, setSearching] = useState(false);
   const [searchPage, setSearchPage] = useState(1);
   const [searchHasMore, setSearchHasMore] = useState(false);
+  const [searchError, setSearchError] = useState(false);
   
   const [searchHistory, setSearchHistory] = useState<SearchResult[]>([]);
   const [selectedGenre, setSelectedGenre] = useState<number | null>(null);
@@ -32,24 +33,38 @@ export const useSearch = () => {
   const searchSeq = useRef(0);
 
   const performSearch = useCallback(async (text: string) => {
-    if (isOffline) return;
+    if (isOffline) {
+      setSearchError(true);
+      return;
+    }
     const seq = ++searchSeq.current;
     if (text.length > CONFIG.LIMITS.MIN_SEARCH_LENGTH) {
       setSearching(true);
-      const { results: searchResults, hasNextPage } = await tmdbService.search(text, 1);
-      if (!isMounted.current) return;
-      if (seq !== searchSeq.current) return;
-      const filtered = searchResults.filter((item: any) => item.media_type === 'movie' || item.media_type === 'tv');
-      setResults(filtered);
-      setSearchPage(1);
-      setSearchHasMore(hasNextPage);
-      setSearching(false);
+      setSearchError(false);
+      try {
+        const { results: searchResults, hasNextPage } = await tmdbService.search(text, 1);
+        if (!isMounted.current) return;
+        if (seq !== searchSeq.current) return;
+        const filtered = searchResults.filter((item: any) => item.media_type === 'movie' || item.media_type === 'tv');
+        setResults(filtered);
+        setSearchPage(1);
+        setSearchHasMore(hasNextPage);
+      } catch (err) {
+        if (!isMounted.current || seq !== searchSeq.current) return;
+        setResults([]);
+        setSearchError(true);
+      } finally {
+        if (isMounted.current && seq === searchSeq.current) {
+          setSearching(false);
+        }
+      }
     } else if (text.length === 0) {
       setResults([]);
       setSearchHasMore(false);
       setSearching(false);
+      setSearchError(false);
     }
-  }, []);
+  }, [isOffline]);
 
   const handleSearch = useCallback((text: string) => {
     setQuery(text);
@@ -68,13 +83,18 @@ export const useSearch = () => {
     if (isOffline || !searchHasMore || isLoadingMore || query.length <= CONFIG.LIMITS.MIN_SEARCH_LENGTH) return;
     setIsLoadingMore(true);
     const nextPage = searchPage + 1;
-    const { results: newResults, hasNextPage } = await tmdbService.search(query, nextPage);
-    if (!isMounted.current) return;
-    const filtered = newResults.filter((item: any) => item.media_type === 'movie' || item.media_type === 'tv');
-    setResults(prev => [...prev, ...filtered]);
-    setSearchPage(nextPage);
-    setSearchHasMore(hasNextPage);
-    setIsLoadingMore(false);
+    try {
+      const { results: newResults, hasNextPage } = await tmdbService.search(query, nextPage);
+      if (!isMounted.current) return;
+      const filtered = newResults.filter((item: any) => item.media_type === 'movie' || item.media_type === 'tv');
+      setResults(prev => [...prev, ...filtered]);
+      setSearchPage(nextPage);
+      setSearchHasMore(hasNextPage);
+    } catch (error) {
+      console.error('loadMoreSearchResults error:', error);
+    } finally {
+      if (isMounted.current) setIsLoadingMore(false);
+    }
   }, [searchHasMore, isLoadingMore, query, searchPage]);
 
   const clearSearch = useCallback(() => {
@@ -85,6 +105,7 @@ export const useSearch = () => {
     setSearchHasMore(false);
     setSearching(false);
     setSearchActive(false);
+    setSearchError(false);
   }, []);
 
   const loadSearchHistory = useCallback(async () => {
@@ -128,12 +149,17 @@ export const useSearch = () => {
     if (isOffline || !selectedGenre || !genreHasMore || isLoadingMore) return;
     setIsLoadingMore(true);
     const nextPage = genrePage + 1;
-    const { results: newResults, hasNextPage } = await tmdbService.discoverByGenre(selectedGenre, nextPage);
-    if (!isMounted.current) return;
-    setGenreResults(prev => [...prev, ...newResults]);
-    setGenrePage(nextPage);
-    setGenreHasMore(hasNextPage);
-    setIsLoadingMore(false);
+    try {
+      const { results: newResults, hasNextPage } = await tmdbService.discoverByGenre(selectedGenre, nextPage);
+      if (!isMounted.current) return;
+      setGenreResults(prev => [...prev, ...newResults]);
+      setGenrePage(nextPage);
+      setGenreHasMore(hasNextPage);
+    } catch (error) {
+      console.error('loadMoreGenreResults error:', error);
+    } finally {
+      if (isMounted.current) setIsLoadingMore(false);
+    }
   }, [selectedGenre, genreHasMore, isLoadingMore, genrePage]);
 
   const removeHistoryItem = useCallback(async (item: SearchResult) => {
@@ -175,6 +201,7 @@ export const useSearch = () => {
     searchActive,
     setSearchActive,
     searching,
+    searchError,
     refreshing,
     searchHistory,
     selectedGenre,

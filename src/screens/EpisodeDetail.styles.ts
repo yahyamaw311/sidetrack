@@ -1,5 +1,6 @@
 import { StyleSheet, Platform } from 'react-native';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, LETTER_SPACING } from '../constants/theme';
+import { CONFIG } from '../constants/config';
 
 export const styles = StyleSheet.create({
   container: {
@@ -47,10 +48,10 @@ export const styles = StyleSheet.create({
   },
   backButton: {
     margin: SPACING.m,
-    width: 44,
-    height: 44,
+    width: 40,
+    height: 40,
     borderRadius: BORDER_RADIUS.round,
-    backgroundColor: 'rgba(25,25,35,0.7)',
+    backgroundColor: COLORS.overlay.light,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
@@ -64,8 +65,8 @@ export const styles = StyleSheet.create({
     paddingBottom: SPACING.l,
   },
   episodeTag: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
+    paddingHorizontal: SPACING.s,
+    paddingVertical: SPACING.xs,
     borderRadius: BORDER_RADIUS.round,
     backgroundColor: COLORS.primary,
   },
@@ -73,14 +74,14 @@ export const styles = StyleSheet.create({
     color: COLORS.text.inverse,
     fontFamily: FONTS.heading,
     fontSize: 12,
-    letterSpacing: 0.5,
+    letterSpacing: LETTER_SPACING.half,
   },
   ratingCircle: {
     width: 48,
     height: 48,
     borderRadius: BORDER_RADIUS.round,
     borderWidth: 2,
-    backgroundColor: 'rgba(7,7,11,0.8)',
+    backgroundColor: COLORS.overlay.medium,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -89,20 +90,20 @@ export const styles = StyleSheet.create({
     fontSize: 16,
   },
   imdbBadge: {
-    backgroundColor: 'rgba(7,7,11,0.85)',
+    backgroundColor: COLORS.overlay.dark,
     borderRadius: BORDER_RADIUS.m,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: SPACING.s,
+    paddingVertical: SPACING.s,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(245,197,24,0.3)',
-    gap: 2,
+    borderColor: COLORS.imdbBorder,
+    gap: SPACING.xxs,
   },
   imdbLabel: {
-    color: '#F5C518',
+    color: COLORS.imdb,
     fontFamily: FONTS.heading,
     fontSize: 11,
-    letterSpacing: 1,
+    letterSpacing: LETTER_SPACING.wide,
   },
   imdbScore: {
     fontFamily: FONTS.display,
@@ -115,7 +116,7 @@ export const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: SPACING.m,
-    paddingBottom: 120,
+    paddingBottom: CONFIG.LAYOUT.TAB_BAR_FULL_HEIGHT,
     marginTop: -SPACING.m,
   },
   title: {
@@ -128,13 +129,13 @@ export const styles = StyleSheet.create({
     color: COLORS.text.secondary,
     fontFamily: FONTS.bodyMedium,
     fontSize: 14,
-    marginTop: 2,
+    marginTop: SPACING.xxs,
     marginBottom: SPACING.s,
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: SPACING.s,
     marginBottom: SPACING.m,
   },
   metaText: {
@@ -151,12 +152,12 @@ export const styles = StyleSheet.create({
   genreRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: SPACING.s,
     marginBottom: SPACING.l,
   },
   genreTag: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
+    paddingHorizontal: SPACING.s,
+    paddingVertical: SPACING.xs,
     borderRadius: BORDER_RADIUS.round,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -176,7 +177,7 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: SPACING.s,
     paddingVertical: SPACING.m,
     borderRadius: BORDER_RADIUS.s,
     borderWidth: 1,
@@ -207,7 +208,7 @@ export const styles = StyleSheet.create({
     color: COLORS.text.muted,
     fontFamily: FONTS.mono,
     fontSize: 11,
-    letterSpacing: 2,
+    letterSpacing: LETTER_SPACING.widest,
     marginBottom: SPACING.s,
   },
   overview: {
@@ -215,6 +216,12 @@ export const styles = StyleSheet.create({
     fontFamily: FONTS.body,
     fontSize: 15,
     lineHeight: 24,
+  },
+  readMore: {
+    color: COLORS.primary,
+    fontFamily: FONTS.bodySemiBold,
+    fontSize: 14,
+    marginTop: SPACING.xs,
   },
   showInfoRow: {
     flexDirection: 'row',
@@ -227,7 +234,7 @@ export const styles = StyleSheet.create({
   showInfoItem: {
     flex: 1,
     alignItems: 'center',
-    gap: 6,
+    gap: SPACING.s,
   },
   showInfoDivider: {
     width: 1,

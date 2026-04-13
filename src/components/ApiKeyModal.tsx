@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, Linking } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal, Linking, ActivityIndicator } from 'react-native';
 import { useAppStore } from '../store/appStore';
 import { COLORS, SPACING, FONTS } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,6 +10,7 @@ export const ApiKeyModal: React.FC = () => {
   
   const [inputValue, setInputValue] = useState('');
   const [error, setError] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // If the key is present, don't render the modal
   if (tmdbApiKey && tmdbApiKey.trim().length > 0) return null;
@@ -20,7 +21,12 @@ export const ApiKeyModal: React.FC = () => {
       return;
     }
     setError(false);
-    await setTmdbApiKey(inputValue.trim());
+    setSaving(true);
+    try {
+      await setTmdbApiKey(inputValue.trim());
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -57,8 +63,12 @@ export const ApiKeyModal: React.FC = () => {
           />
           {error && <Text style={styles.errorText}>Please enter a valid API key.</Text>}
 
-          <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-            <Text style={styles.saveButtonText}>Save Key</Text>
+          <TouchableOpacity style={[styles.saveButton, saving && styles.saveButtonDisabled]} onPress={handleSave} disabled={saving}>
+            {saving ? (
+              <ActivityIndicator color={COLORS.background} size="small" />
+            ) : (
+              <Text style={styles.saveButtonText}>Save Key</Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -69,7 +79,7 @@ export const ApiKeyModal: React.FC = () => {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    backgroundColor: COLORS.overlay.dark,
     justifyContent: 'center',
     padding: SPACING.l,
   },
@@ -102,10 +112,9 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.l,
   },
   linkText: {
-    fontFamily: FONTS.bodyMedium,
+    fontFamily: FONTS.bodySemiBold,
     fontSize: 14,
     color: COLORS.primary,
-    fontWeight: '600',
   },
   input: {
     backgroundColor: COLORS.background,
@@ -126,13 +135,15 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.bodyMedium,
     fontSize: 12,
     marginBottom: SPACING.m,
-    marginTop: -8,
   },
   saveButton: {
     backgroundColor: COLORS.primary,
     padding: SPACING.m,
     borderRadius: SPACING.s,
     alignItems: 'center',
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
   },
   saveButtonText: {
     color: COLORS.background,

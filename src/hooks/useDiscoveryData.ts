@@ -1,70 +1,77 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { LayoutAnimation } from 'react-native';
 import { tmdbService } from '../services/tmdbService';
 import { StorageProvider } from '../services/StorageProvider';
 import { useAppStore } from '../store/appStore';
-import { SearchResult } from '../types';
 
 export const useDiscoveryData = () => {
-  const [trending, setTrending] = useState<SearchResult[]>([]);
-  const [trendingMovies, setTrendingMovies] = useState<SearchResult[]>([]);
-  const [topRated, setTopRated] = useState<SearchResult[]>([]);
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
+  const currentlyWatching = useAppStore(s => s.currentlyWatching);
   const [refreshing, setRefreshing] = useState(false);
 
-  const isMounted = useRef(true);
-  useEffect(() => {
-    isMounted.current = true;
-    return () => { isMounted.current = false; };
-  }, []);
+  const { data: trending = [], isLoading: loadingTrending } = useQuery({
+    queryKey: ['trending', 'tv'],
+    queryFn: async () => {
+      if (useAppStore.getState().isOffline) {
+        return await StorageProvider.getTrendingCache();
+      }
+      const data = await tmdbService.getTrending();
+      if (data.length > 0) StorageProvider.setTrendingCache(data);
+      return data;
+    },
+  });
 
-  // Currently watching comes from the store
-  const currentlyWatching = useAppStore(s => s.currentlyWatching);
-  const isOffline = useAppStore(s => s.isOffline);
+  const { data: trendingMovies = [], isLoading: loadingMovies } = useQuery({
+    queryKey: ['trending', 'movies'],
+    queryFn: async () => {
+      if (useAppStore.getState().isOffline) {
+        return await StorageProvider.getTrendingMovieCache();
+      }
+      const data = await tmdbService.getTrendingMovies();
+      if (data.length > 0) StorageProvider.setTrendingMovieCache(data);
+      return data;
+    },
+  });
+
+  const { data: topRated = [], isLoading: loadingTopRated } = useQuery({
+    queryKey: ['topRated', 'movies'],
+    queryFn: async () => {
+      if (useAppStore.getState().isOffline) {
+        return await StorageProvider.getTopRatedMovieCache();
+      }
+      const data = await tmdbService.getTopRatedMovies();
+      if (data.length > 0) StorageProvider.setTopRatedMovieCache(data);
+      return data;
+    },
+  });
+
+  const loading = loadingTrending || loadingMovies || loadingTopRated;
 
   const loadTrending = useCallback(async (bustCache = false) => {
     if (bustCache) {
-      tmdbService.clearCache();
-    }
-    setLoading(true);
-
-    if (isOffline) {
-      const [cachedTv, cachedMovies, cachedTop] = await Promise.all([
-        StorageProvider.getTrendingCache(),
-        StorageProvider.getTrendingMovieCache(),
-        StorageProvider.getTopRatedMovieCache(),
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['trending', 'tv'] }),
+        queryClient.invalidateQueries({ queryKey: ['trending', 'movies'] }),
+        queryClient.invalidateQueries({ queryKey: ['topRated', 'movies'] })
       ]);
-      if (!isMounted.current) return;
-      setTrending(cachedTv);
-      setTrendingMovies(cachedMovies);
-      setTopRated(cachedTop);
-    } else {
-      const [tvData, movieData, topRatedData] = await Promise.all([
-        tmdbService.getTrending(),
-        tmdbService.getTrendingMovies(),
-        tmdbService.getTopRatedMovies(),
-      ]);
-      if (!isMounted.current) return;
-      setTrending(tvData);
-      setTrendingMovies(movieData);
-      setTopRated(topRatedData);
-
-      // Update offline cache
-      if (tvData.length > 0) StorageProvider.setTrendingCache(tvData);
-      if (movieData.length > 0) StorageProvider.setTrendingMovieCache(movieData);
-      if (topRatedData.length > 0) StorageProvider.setTopRatedMovieCache(topRatedData);
     }
-
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setLoading(false);
-  }, [isOffline]);
+  }, [queryClient]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadTrending(true);
-    if (!isMounted.current) return;
+    await Promise.all([
+      queryClient.refetchQueries({ queryKey: ['trending', 'tv'] }),
+      queryClient.refetchQueries({ queryKey: ['trending', 'movies'] }),
+      queryClient.refetchQueries({ queryKey: ['topRated', 'movies'] }),
+    ]);
     setRefreshing(false);
-  }, [loadTrending]);
+  }, [queryClient]);
+
+  // Triggers LayoutAnimation when data finishes loading initially
+  if (!loading) {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+  }
 
   return {
     trending,

@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { COLORS, SPACING } from '../../constants/theme';
 import { SwipeableRow } from '../SwipeableRow';
 import { FadeImage } from '../FadeImage';
@@ -40,7 +41,10 @@ export const HistoryMovieRow = React.memo<HistoryMovieRowProps>(({ item, onSelec
   <SwipeableRow onDelete={() => onRemoveMovie(item.movieId, item.watchedDate)} isLoading={isLoading}>
     <TouchableOpacity
       style={tvStyles.showCard}
-      onPress={() => onSelectMovie?.(item.movieId)}
+      onPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        onSelectMovie?.(item.movieId);
+      }}
       activeOpacity={0.7}
       accessibilityRole="button"
       accessibilityLabel={`${item.title}, rated ${item.rating !== null ? item.rating.toFixed(1) : 'unrated'}, watched ${formatDate(item.watchedDate)}`}
@@ -100,7 +104,10 @@ export const HistoryShowCard = React.memo<HistoryShowCardProps>(({ item, drillIn
   return (
     <TouchableOpacity
       style={tvStyles.showCard}
-      onPress={() => drillIntoShow(item.seriesId)}
+      onPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        drillIntoShow(item.seriesId);
+      }}
       activeOpacity={0.7}
       accessibilityRole="button"
       accessibilityLabel={`${item.seriesName}, ${totalSeasons} season${totalSeasons !== 1 ? 's' : ''}, ${totalEps} episode${totalEps !== 1 ? 's' : ''}`}
@@ -152,7 +159,10 @@ export const HistoryEpisodeRow = React.memo<HistoryEpisodeRowProps>(({ item, onR
       <TouchableOpacity
         style={tvStyles.episodeRow}
         activeOpacity={0.7}
-        onPress={() => openEpisodeEdit(item)}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          openEpisodeEdit(item);
+        }}
         accessibilityRole="button"
         accessibilityLabel={`S${item.seasonNumber}E${item.episodeNumber}, ${item.episodeName || `Episode ${item.episodeNumber}`}, ${item.rating !== null ? `rated ${item.rating}` : 'not rated'}`}
         accessibilityHint="Double tap to edit, swipe left to delete"

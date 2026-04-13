@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, Platform } from 'react-native';
+﻿import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { COLORS, FONTS, SPACING, BORDER_RADIUS } from '../constants/theme';
+import { CONFIG } from '../constants/config';
 import { tmdbService } from '../services/tmdbService';
 import { Episode, TVShowDetail } from '../types';
 import { SwipeableStars } from './SwipeableStars';
@@ -51,6 +53,7 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
     const [noSpoilers, setNoSpoilers] = useState(false);
     const [watchedDate, setWatchedDate] = useState<Date>(new Date());
     const [datePickerVisible, setDatePickerVisible] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
 
     // Pre-fill from initialData when modal opens
     useEffect(() => {
@@ -74,10 +77,16 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
         }
     }, [visible]);
 
-    const handleConfirm = () => {
+    const handleConfirm = async () => {
+        if (submitting) return;
+        setSubmitting(true);
         const cleanTags = Array.from(new Set(tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean))).join(', ');
         const clampedDate = watchedDate > new Date() ? new Date() : watchedDate;
-        onConfirm({ rating, liked, review: review.trim(), tags: cleanTags, rewatch, noSpoilers, watchedDate: clampedDate });
+        try {
+            await onConfirm({ rating, liked, review: review.trim(), tags: cleanTags, rewatch, noSpoilers, watchedDate: clampedDate });
+        } finally {
+            setSubmitting(false);
+        }
         // Reset state
         setRating(null);
         setLiked(false);
@@ -120,7 +129,8 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
                         <Text style={styles.headerTitle}>{initialData ? 'Edit Entry' : 'I Watched'}</Text>
                         <TouchableOpacity
                             onPress={handleConfirm}
-                            style={styles.headerBtn}
+                            style={[styles.headerBtn, submitting && { opacity: 0.5 }]}
+                            disabled={submitting}
                             accessibilityRole="button"
                             accessibilityLabel="Save"
                         >
@@ -144,7 +154,7 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
                                 )}
                                 <View style={styles.episodeText}>
                                     <Text style={styles.episodeTitle} numberOfLines={2}>
-                                        {show?.name} — S{episode.season_number}E{episode.episode_number}
+                                        {show?.name} â€” S{episode.season_number}E{episode.episode_number}
                                     </Text>
                                     <Text style={styles.episodeSub} numberOfLines={1}>{episode.name}</Text>
                                 </View>
@@ -152,7 +162,7 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
                         )}
 
                         {/* Date */}
-                        <TouchableOpacity style={styles.row} onPress={() => setDatePickerVisible(true)} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={`Watched date: ${formatDate(watchedDate)}`} accessibilityHint="Double tap to change date">
+                        <TouchableOpacity style={styles.row} onPress={() => setDatePickerVisible(true)} activeOpacity={CONFIG.LAYOUT.ACTIVE_OPACITY} accessibilityRole="button" accessibilityLabel={`Watched date: ${formatDate(watchedDate)}`} accessibilityHint="Double tap to change date">
                             <Text style={styles.rowLabel}>Date</Text>
                             <View style={styles.dateRight}>
                                 <Ionicons name="calendar-outline" size={16} color={COLORS.text.secondary} />
@@ -177,8 +187,11 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
                             </View>
                             <TouchableOpacity
                                 style={styles.likeWrap}
-                                onPress={() => setLiked(!liked)}
-                                activeOpacity={0.7}
+                                onPress={() => {
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                    setLiked(!liked);
+                                }}
+                                activeOpacity={CONFIG.LAYOUT.ACTIVE_OPACITY}
                                 accessibilityRole="button"
                                 accessibilityLabel={liked ? 'Unlike' : 'Like'}
                                 accessibilityState={{ selected: liked }}
@@ -223,8 +236,11 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
                         <View style={styles.toggleRow}>
                             <TouchableOpacity
                                 style={styles.toggleItem}
-                                onPress={() => setRewatch(!rewatch)}
-                                activeOpacity={0.7}
+                                onPress={() => {
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                    setRewatch(!rewatch);
+                                }}
+                                activeOpacity={CONFIG.LAYOUT.ACTIVE_OPACITY}
                                 accessibilityRole="switch"
                                 accessibilityLabel="I've seen this before"
                                 accessibilityState={{ checked: rewatch }}
@@ -244,8 +260,11 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
 
                             <TouchableOpacity
                                 style={styles.toggleItem}
-                                onPress={() => setNoSpoilers(!noSpoilers)}
-                                activeOpacity={0.7}
+                                onPress={() => {
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                    setNoSpoilers(!noSpoilers);
+                                }}
+                                activeOpacity={CONFIG.LAYOUT.ACTIVE_OPACITY}
                                 accessibilityRole="switch"
                                 accessibilityLabel="No spoilers"
                                 accessibilityState={{ checked: noSpoilers }}
@@ -284,7 +303,7 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingHorizontal: SPACING.m,
         paddingVertical: SPACING.s,
-        paddingTop: Platform.OS === 'android' ? 40 : 54,
+        paddingTop: SPACING.m,
         borderBottomWidth: 1,
         borderBottomColor: COLORS.borderLight,
     },
@@ -321,7 +340,7 @@ const styles = StyleSheet.create({
     },
     episodeText: {
         flex: 1,
-        gap: 2,
+        gap: SPACING.xxs,
     },
     episodeTitle: {
         color: COLORS.text.primary,
@@ -347,7 +366,7 @@ const styles = StyleSheet.create({
     dateRight: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 10,
+        gap: SPACING.s,
     },
     dateText: {
         color: COLORS.text.primary,
@@ -367,7 +386,7 @@ const styles = StyleSheet.create({
     },
     starsWrap: {
         alignItems: 'flex-start',
-        gap: 6,
+        gap: SPACING.s,
     },
     starsLabel: {
         color: COLORS.text.secondary,
@@ -376,7 +395,7 @@ const styles = StyleSheet.create({
     },
     likeWrap: {
         alignItems: 'center',
-        gap: 6,
+        gap: SPACING.s,
     },
     likeLabel: {
         color: COLORS.text.secondary,
@@ -403,7 +422,7 @@ const styles = StyleSheet.create({
     },
     toggleItem: {
         alignItems: 'center',
-        gap: 8,
+        gap: SPACING.s,
     },
     toggleIconWrap: {
         position: 'relative',

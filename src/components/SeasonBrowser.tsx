@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, LayoutAnimation, FlatList, RefreshControlProps } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, FONTS, SPACING, BORDER_RADIUS, getRatingColor } from '../constants/theme';
+import { COLORS, FONTS, SPACING, BORDER_RADIUS, LETTER_SPACING, getRatingColor } from '../constants/theme';
+import { CONFIG } from '../constants/config';
 import { tmdbService } from '../services/tmdbService';
 import { Episode, SeasonSummary, EpisodeDetailData } from '../types';
 import { FadeImage } from './FadeImage';
@@ -31,6 +32,7 @@ export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
     refreshControl,
 }) => {
     const storeRemoveEpisode = useAppStore(s => s.removeEpisode);
+    const isOffline = useAppStore(s => s.isOffline);
     const isMounted = useRef(true);
     useEffect(() => {
         isMounted.current = true;
@@ -81,6 +83,10 @@ export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
             if (data?.episodes) {
                 setSeasonEpisodes(prev => ({ ...prev, [seasonNumber]: data.episodes }));
                 fetchEpisodeImdbRatings(seasonNumber, data.episodes);
+            } else if (!data) {
+                // Service returned null — either offline or network failure
+                // Season is already expanded visually; episodes list will be empty,
+                // and the SEASON row renders an offline banner (see renderItem).
             }
             setLoadingSeason(null);
         } else {
@@ -118,6 +124,7 @@ export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
         expandedEpisodeId,
         episodeImdbRatings,
         episodeDetails,
+        isOffline,
     }), [
         loadingSeason,
         loadingEpisodeDetail,
@@ -126,6 +133,7 @@ export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
         expandedEpisodeId,
         episodeImdbRatings,
         episodeDetails,
+        isOffline,
     ]);
 
     const listData = React.useMemo(() => {
@@ -151,6 +159,7 @@ export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
             const season = item.item;
             const isExpanded = expandedSeason === season.season_number;
             const isLoading = loadingSeason === season.season_number;
+            const noEpisodesLoaded = isExpanded && !seasonEpisodes[season.season_number] && !isLoading;
             return (
                 <View style={[styles.seasonBlock, { marginHorizontal: SPACING.m }]}>
                     <TouchableOpacity
@@ -181,6 +190,19 @@ export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
                             )}
                         </View>
                     </TouchableOpacity>
+                    {/* Offline/error banner: shown when we expanded but couldn't load episodes */}
+                    {noEpisodesLoaded && isOffline && (
+                        <View style={styles.offlineBanner} accessibilityLiveRegion="polite">
+                            <Ionicons name="cloud-offline-outline" size={14} color={COLORS.text.muted} />
+                            <Text style={styles.offlineBannerText}>Offline — season unavailable</Text>
+                        </View>
+                    )}
+                    {noEpisodesLoaded && !isOffline && (
+                        <View style={styles.offlineBanner} accessibilityLiveRegion="polite">
+                            <Ionicons name="alert-circle-outline" size={14} color={COLORS.text.muted} />
+                            <Text style={styles.offlineBannerText}>Couldn't load episodes — try again</Text>
+                        </View>
+                    )}
                 </View>
             );
         }
@@ -354,7 +376,7 @@ export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
         currentEpisode?.id, expandedEpisodeId, episodeDetails,
         loadingEpisodeDetail, episodeImdbRatings, watchedEpisodeIds,
         onSelectEpisode, onOpenWatchedModal, onEditWatchedEntry,
-        storeRemoveEpisode, toggleEpisodeExpand
+        storeRemoveEpisode, toggleEpisodeExpand, isOffline, seasonEpisodes,
     ]);
 
     return (
@@ -364,7 +386,7 @@ export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
             keyExtractor={(item) => item.type === 'TITLE' ? 'title' : item.type === 'SEASON' ? `s-${item.item.id}` : `e-${item.item.id}`}
             ListHeaderComponent={ListHeaderComponent}
             refreshControl={refreshControl}
-            contentContainerStyle={{ paddingBottom: 120 }}
+            contentContainerStyle={{ paddingBottom: CONFIG.LAYOUT.TAB_BAR_FULL_HEIGHT }}
             showsVerticalScrollIndicator={false}
             renderItem={renderItem}
         />
@@ -379,7 +401,7 @@ const styles = StyleSheet.create({
         color: COLORS.text.muted,
         fontFamily: FONTS.mono,
         fontSize: 11,
-        letterSpacing: 2,
+        letterSpacing: LETTER_SPACING.widest,
         marginBottom: SPACING.s,
     },
     seasonBlock: {
@@ -395,11 +417,11 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: SPACING.m,
-        paddingVertical: 14,
+        paddingVertical: SPACING.ms,
     },
     seasonHeaderLeft: {
         flex: 1,
-        gap: 2,
+        gap: SPACING.xxs,
     },
     seasonTitle: {
         color: COLORS.text.primary,
@@ -425,7 +447,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: SPACING.m,
-        paddingVertical: 12,
+        paddingVertical: SPACING.ms,
         borderBottomWidth: 1,
         borderBottomColor: COLORS.borderLight,
     },
@@ -438,7 +460,7 @@ const styles = StyleSheet.create({
     epTopRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 10,
+        gap: SPACING.s,
     },
     episodeNumberWrap: {
         width: 24,
@@ -465,7 +487,7 @@ const styles = StyleSheet.create({
     },
     episodeInfo: {
         flex: 1,
-        gap: 2,
+        gap: SPACING.xxs,
     },
     episodeTitle: {
         color: COLORS.text.primary,
@@ -480,8 +502,8 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         flexWrap: 'wrap',
-        gap: 4,
-        marginTop: 2,
+        gap: SPACING.xs,
+        marginTop: SPACING.xxs,
     },
     episodeMetaText: {
         color: COLORS.text.muted,
@@ -497,7 +519,7 @@ const styles = StyleSheet.create({
     episodeRatingRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 3,
+        gap: SPACING.xxs,
     },
     epWatchButton: {
         width: 28,
@@ -507,11 +529,11 @@ const styles = StyleSheet.create({
         borderColor: COLORS.border,
         justifyContent: 'center',
         alignItems: 'center',
-        marginLeft: 4,
+        marginLeft: SPACING.xs,
     },
     epWatchButtonDone: {
         borderColor: COLORS.teal,
-        backgroundColor: 'rgba(45,212,168,0.12)',
+        backgroundColor: COLORS.tealMuted,
     },
     epExpandedWrap: {
         backgroundColor: COLORS.surface,
@@ -543,7 +565,7 @@ const styles = StyleSheet.create({
     epStatItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 5,
+        gap: SPACING.xs,
     },
     epStatValue: {
         fontFamily: FONTS.heading,
@@ -560,5 +582,20 @@ const styles = StyleSheet.create({
         fontSize: 13,
         lineHeight: 20,
         marginBottom: SPACING.m,
+    },
+    offlineBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: SPACING.xs,
+        paddingHorizontal: SPACING.m,
+        paddingVertical: SPACING.s,
+        borderTopWidth: 1,
+        borderTopColor: COLORS.borderLight,
+        backgroundColor: COLORS.surface,
+    },
+    offlineBannerText: {
+        color: COLORS.text.muted,
+        fontFamily: FONTS.body,
+        fontSize: 12,
     },
 });

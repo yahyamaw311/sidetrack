@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import { View, Text, FlatList, StyleSheet } from 'react-native';
-import { COLORS, SPACING, BORDER_RADIUS, FONTS } from '../constants/theme';
+import { COLORS, SPACING, BORDER_RADIUS, FONTS, LETTER_SPACING } from '../constants/theme';
 import { tmdbService } from '../services/tmdbService';
 import { CreditPerson } from '../types';
 import { FadeImage } from './FadeImage';
@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.heading,
     color: COLORS.text.muted,
     marginBottom: SPACING.s,
-    letterSpacing: 1,
+    letterSpacing: LETTER_SPACING.wide,
     paddingHorizontal: SPACING.m,
   },
   castScroll: {
@@ -142,7 +142,7 @@ const styles = StyleSheet.create({
   castCharacter: {
     fontSize: 10,
     color: COLORS.text.muted,
-    marginTop: 2,
+    marginTop: SPACING.xxs,
   },
   crewSection: {
     marginTop: SPACING.m,
@@ -158,13 +158,13 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: COLORS.text.muted,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: LETTER_SPACING.half,
   },
   crewName: {
     fontSize: 13,
     fontFamily: FONTS.heading,
     color: COLORS.text.primary,
-    marginTop: 2,
+    marginTop: SPACING.xxs,
   },
   verticalList: {
     paddingHorizontal: SPACING.m,

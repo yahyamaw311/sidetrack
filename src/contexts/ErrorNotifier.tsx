@@ -97,7 +97,7 @@ const ErrorToast: React.FC<{ notif: ErrorNotification; onDismiss: (id: number) =
   }, [slideAnim, opacityAnim]);
 
   const icon = notif.type === 'storage' ? 'alert-circle-outline' : 'cloud-offline-outline';
-  const iconColor = notif.type === 'storage' ? COLORS.coral : '#F5C518';
+  const iconColor = notif.type === 'storage' ? COLORS.coral : COLORS.imdb;
 
   return (
     <Animated.View style={[styles.toast, { transform: [{ translateY: slideAnim }], opacity: opacityAnim }]}>
@@ -126,11 +126,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
     borderRadius: BORDER_RADIUS.m,
     paddingHorizontal: SPACING.m,
-    paddingVertical: SPACING.s + 2,
+    paddingVertical: SPACING.s,
     borderWidth: 1,
     borderColor: COLORS.borderLight,
     // subtle shadow
-    shadowColor: '#000',
+    shadowColor: COLORS.shadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,

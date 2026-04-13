@@ -154,11 +154,22 @@ export { computeStreak, getDecade, getFunTimeEquivalent, determinePersonality };
 // ── Main computation ──
 
 export const StatsService = {
-    computeWrapped: async (year?: number): Promise<WrappedStats> => {
-        const allMovies = await StorageProvider.getWatchedMovies();
-        const allEpisodes = await StorageProvider.getAllWatchedEpisodes();
-        const favoriteMovies = await StorageProvider.getAllFavoriteMovies();
-        const favoriteEpisodes = await StorageProvider.getAllFavorites();
+    computeWrapped: async (
+        year?: number,
+        preloadedData?: {
+            movies?: WatchedMovie[];
+            episodes?: WatchedEpisode[];
+            favoriteMovieCount?: number;
+            favoriteEpisodeCount?: number;
+            watchlistCount?: number;
+        }
+    ): Promise<WrappedStats> => {
+        const allMovies = preloadedData?.movies ?? await StorageProvider.getWatchedMovies();
+        const allEpisodes = preloadedData?.episodes ?? await StorageProvider.getAllWatchedEpisodes();
+        // Use preloaded counts when available; fall back to storage reads
+        const favoriteMoviesCount = preloadedData?.favoriteMovieCount ?? (await StorageProvider.getAllFavoriteMovies()).length;
+        const favoriteEpisodesCount = preloadedData?.favoriteEpisodeCount ?? (await StorageProvider.getAllFavorites()).length;
+        const totalFavorites = favoriteMoviesCount + favoriteEpisodesCount;
 
         // Filter to the requested year (by watchedDate)
         const isInYear = (dateStr: string) => {
@@ -379,7 +390,6 @@ export const StatsService = {
 
         // ── Social / engagement ──
         const totalLikes = episodes.filter(e => e.liked).length;
-        const totalFavorites = favoriteMovies.length + favoriteEpisodes.length;
         const totalEntries = totalMovies + totalEpisodes;
         const likeRatio = totalEntries > 0 ? Math.round((totalLikes / totalEntries) * 100) : 0;
 
