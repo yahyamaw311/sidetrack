@@ -20,7 +20,7 @@ interface SeasonBrowserProps {
     refreshControl?: React.ReactElement<RefreshControlProps>;
 }
 
-export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
+const SeasonBrowserComponent: React.FC<SeasonBrowserProps> = ({
     tvId,
     displaySeasons,
     currentEpisode,
@@ -64,10 +64,8 @@ export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
     const toggleSeason = useCallback(async (seasonNumber: number) => {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         
-        // Reset episode-specific state when switching or closing seasons
+        // Reset expanded episode when switching or closing seasons
         setExpandedEpisodeId(null);
-        setEpisodeDetails({});
-        setEpisodeImdbRatings({});
 
         if (expandedSeason === seasonNumber) {
             setExpandedSeason(null);
@@ -294,7 +292,7 @@ export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
                                             text: 'Remove',
                                             style: 'destructive',
                                             onPress: async () => {
-                                                await storeRemoveEpisode(ep.seriesId, ep.id);
+                                                await storeRemoveEpisode(tvId, ep.id);
                                             },
                                         },
                                     ]
@@ -392,6 +390,8 @@ export const SeasonBrowser: React.FC<SeasonBrowserProps> = ({
         />
     );
 };
+
+export const SeasonBrowser = React.memo(SeasonBrowserComponent);
 
 const styles = StyleSheet.create({
     section: {

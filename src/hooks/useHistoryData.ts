@@ -30,8 +30,9 @@ export const useHistoryData = () => {
   const storeRemoveMovie = useAppStore(s => s.removeWatchedMovie);
   const storeRemoveEpisode = useAppStore(s => s.removeEpisode);
   const hydrate = useAppStore(s => s.hydrate);
-
-  const [loading, setLoading] = useState(!useAppStore.getState().hydrated);
+  const hydrated = useAppStore(s => s.hydrated);
+  const [isHydrating, setIsHydrating] = useState(false);
+  const loading = !hydrated || isHydrating;
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -58,26 +59,11 @@ export const useHistoryData = () => {
     return () => { isMounted.current = false; };
   }, []);
 
-  // Mark loading done once store is hydrated
-  useEffect(() => {
-    if (useAppStore.getState().hydrated) {
-      setLoading(false);
-      return;
-    }
-    const unsub = useAppStore.subscribe((s) => {
-      if (s.hydrated) {
-        setLoading(false);
-        unsub();
-      }
-    });
-    return unsub;
-  }, []);
-
   const loadHistory = useCallback(async () => {
-    setLoading(true);
+    setIsHydrating(true);
     await hydrate();
     if (!isMounted.current) return;
-    setLoading(false);
+    setIsHydrating(false);
   }, [hydrate]);
 
   const handleRefresh = useCallback(async () => {

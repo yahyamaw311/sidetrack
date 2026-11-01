@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '../store/appStore';
 import { COLORS, FONTS, SPACING } from '../constants/theme';
 
-export const NetworkBanner = () => {
+export const NetworkBanner = React.memo(() => {
   const isOffline = useAppStore(s => s.isOffline);
   const insets = useSafeAreaInsets();
   const slideAnim = useRef(new Animated.Value(-100)).current;
@@ -32,7 +32,7 @@ export const NetworkBanner = () => {
       </View>
     </Animated.View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import Constants from 'expo-constants';
 import { StorageProvider } from '../services/StorageProvider';
 import { notifyErrorGlobal } from '../contexts/ErrorNotifier';
 import {
@@ -73,45 +74,47 @@ interface AppState {
   setIsOffline: (isOffline: boolean) => void;
 }
 
+const envTmdbKey = (Constants.expoConfig?.extra?.tmdbApiKey || process.env.EXPO_PUBLIC_TMDB_API_KEY || null) as string | null;
+
 export const useAppStore = create<AppState>()((set, get) => ({
   // ── Initial state ───────────────────────────────────────────
-  watchedMovies: [],
-  watchedEpisodes: [],
-  watchlist: [],
-  favoriteMovieIds: new Set<number>(),
-  favoriteEpisodeIds: new Set<number>(),
-  currentlyWatching: [],
-  hydrated: false,
-  consentGiven: null,
-  tmdbApiKey: null,
-  isOffline: false,
+    watchedMovies: [],
+    watchedEpisodes: [],
+    watchlist: [],
+    favoriteMovieIds: new Set<number>(),
+    favoriteEpisodeIds: new Set<number>(),
+    currentlyWatching: [],
+    hydrated: false,
+    consentGiven: null,
+    tmdbApiKey: envTmdbKey,
+    isOffline: false,
 
-  setIsOffline: (isOffline: boolean) => set({ isOffline }),
+    setIsOffline: (isOffline: boolean) => set({ isOffline }),
 
-  // ── Hydrate from AsyncStorage ───────────────────────────────
-  hydrate: async () => {
-    const [movies, episodes, watchlist, favMovies, favEpisodeIds, cw, consentGiven, apiKey] = await Promise.all([
-      StorageProvider.getWatchedMovies(),
-      StorageProvider.getAllWatchedEpisodes(),
-      StorageProvider.getWatchlist(),
-      StorageProvider.getAllFavoriteMovies(),
-      StorageProvider.getAllFavorites(),
-      StorageProvider.getCurrentlyWatching(),
-      StorageProvider.hasGivenConsent(),
-      StorageProvider.getTmdbApiKey(),
-    ]);
-    set({
-      watchedMovies: movies,
-      watchedEpisodes: episodes,
-      watchlist,
-      favoriteMovieIds: new Set(favMovies.map((m: any) => m.movieId)),
-      favoriteEpisodeIds: new Set(favEpisodeIds),
-      currentlyWatching: cw,
-      hydrated: true,
-      consentGiven,
-      tmdbApiKey: apiKey,
-    });
-  },
+    // ── Hydrate from AsyncStorage ───────────────────────────────
+    hydrate: async () => {
+      const [movies, episodes, watchlist, favMovies, favEpisodeIds, cw, consentGiven, apiKey] = await Promise.all([
+        StorageProvider.getWatchedMovies(),
+        StorageProvider.getAllWatchedEpisodes(),
+        StorageProvider.getWatchlist(),
+        StorageProvider.getAllFavoriteMovies(),
+        StorageProvider.getAllFavorites(),
+        StorageProvider.getCurrentlyWatching(),
+        StorageProvider.hasGivenConsent(),
+        StorageProvider.getTmdbApiKey(),
+      ]);
+      set({
+        watchedMovies: movies,
+        watchedEpisodes: episodes,
+        watchlist,
+        favoriteMovieIds: new Set(favMovies.map((m: any) => m.movieId)),
+        favoriteEpisodeIds: new Set(favEpisodeIds),
+        currentlyWatching: cw,
+        hydrated: true,
+        consentGiven,
+        tmdbApiKey: apiKey || envTmdbKey,
+      });
+    },
 
   setConsentGiven: async (given) => {
     set({ consentGiven: given });

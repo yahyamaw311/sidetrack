@@ -19,6 +19,8 @@ module.exports = {
   moduleNameMapper: {
     // Mock native image requires
     '\\.(png|jpg|jpeg|gif|webp|svg)$': '<rootDir>/__mocks__/fileMock.js',
+    '^expo-constants$': '<rootDir>/__mocks__/expo-constants.ts',
+    '^expo/virtual/env.*$': '<rootDir>/__mocks__/expoEnvMock.js',
   },
   setupFiles: [],
 };

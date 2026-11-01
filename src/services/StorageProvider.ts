@@ -11,6 +11,10 @@ const STORAGE_KEYS = {
   SEARCH_HISTORY: '@sidetrack_search_history',
   CONSENT_GIVEN: '@sidetrack_consent_given',
   TMDB_API_KEY: '@sidetrack_tmdb_api_key',
+  ONBOARDING_COMPLETE: '@sidetrack_onboarding_complete',
+  TRENDING_TV: '@cache_trending_tv',
+  TRENDING_MOVIE: '@cache_trending_movie',
+  TOP_RATED_MOVIE: '@cache_top_rated_movie',
 };
 
 // --- Helper to get parsed JSON ---
@@ -58,7 +62,13 @@ export const StorageProvider = {
     );
   },
 
-  removeWatchedEpisode: async (episodeId: number) => {
+  getWatchedEpisodesForShow: async (seriesId: number): Promise<WatchedEpisode[]> => {
+    const watched = await getData<Record<number, WatchedEpisode>>(STORAGE_KEYS.WATCHED, {});
+    return Object.values(watched).filter(w => w.seriesId === seriesId);
+  },
+
+  removeWatchedEpisode: async (seriesIdOrEpisodeId: number, maybeEpisodeId?: number) => {
+    const episodeId = maybeEpisodeId !== undefined ? maybeEpisodeId : seriesIdOrEpisodeId;
     const watched = await getData<Record<number, WatchedEpisode>>(STORAGE_KEYS.WATCHED, {});
     delete watched[episodeId];
     await setData(STORAGE_KEYS.WATCHED, watched);
@@ -86,22 +96,24 @@ export const StorageProvider = {
     return Object.keys(favorites).map(Number);
   },
 
-  // --- Watchlist (Series) ---
+  // --- Watchlist ---
 
   addToWatchlist: async (item: QueuedItem) => {
-    const watchlist = await getData<Record<number, QueuedItem>>(STORAGE_KEYS.WATCHLIST, {});
-    watchlist[item.seriesId] = item;
+    const watchlist = await getData<Record<string, QueuedItem>>(STORAGE_KEYS.WATCHLIST, {});
+    const key = `${item.itemId}_${item.itemType}`;
+    watchlist[key] = item;
     await setData(STORAGE_KEYS.WATCHLIST, watchlist);
   },
 
-  removeFromWatchlist: async (seriesId: number) => {
-    const watchlist = await getData<Record<number, QueuedItem>>(STORAGE_KEYS.WATCHLIST, {});
-    delete watchlist[seriesId];
+  removeFromWatchlist: async (itemId: number, itemType: 'tv' | 'movie') => {
+    const watchlist = await getData<Record<string, QueuedItem>>(STORAGE_KEYS.WATCHLIST, {});
+    const key = `${itemId}_${itemType}`;
+    delete watchlist[key];
     await setData(STORAGE_KEYS.WATCHLIST, watchlist);
   },
 
   getWatchlist: async (): Promise<QueuedItem[]> => {
-    const watchlist = await getData<Record<number, QueuedItem>>(STORAGE_KEYS.WATCHLIST, {});
+    const watchlist = await getData<Record<string, QueuedItem>>(STORAGE_KEYS.WATCHLIST, {});
     return Object.values(watchlist).sort((a, b) =>
       new Date(b.addedDate).getTime() - new Date(a.addedDate).getTime()
     );
@@ -117,9 +129,13 @@ export const StorageProvider = {
     await setData(STORAGE_KEYS.WATCHED_MOVIES, watched);
   },
 
-  updateWatchedMovieRating: async (movieId: number, newRating: number) => {
+  updateWatchedMovieRating: async (movieId: number, newRating: number, watchedDate?: string) => {
     const watched = await getData<Record<string, WatchedMovie>>(STORAGE_KEYS.WATCHED_MOVIES, {});
-    const key = Object.keys(watched).find(k => watched[k].movieId === movieId);
+    const key = Object.keys(watched).find(k => {
+      if (watched[k].movieId !== movieId) return false;
+      if (watchedDate && watched[k].watchedDate !== watchedDate) return false;
+      return true;
+    });
     if (key) {
       watched[key].rating = newRating;
       await setData(STORAGE_KEYS.WATCHED_MOVIES, watched);
@@ -141,8 +157,32 @@ export const StorageProvider = {
     }
   },
 
+  updateWatchedMovie: async (newMovie: WatchedMovie, oldWatchedDate: string) => {
+    const watched = await getData<Record<string, WatchedMovie>>(STORAGE_KEYS.WATCHED_MOVIES, {});
+    // find old key
+    const keyToDelete = Object.keys(watched).find(key => {
+      const entry = watched[key];
+      return entry.movieId === newMovie.movieId && entry.watchedDate === oldWatchedDate;
+    });
+    if (keyToDelete) {
+      delete watched[keyToDelete];
+    }
+    const newKey = `${newMovie.movieId}_${newMovie.watchedDate}`;
+    watched[newKey] = newMovie;
+    await setData(STORAGE_KEYS.WATCHED_MOVIES, watched);
+  },
+
   getWatchedMovies: async (): Promise<WatchedMovie[]> => {
     const watched = await getData<Record<string, WatchedMovie>>(STORAGE_KEYS.WATCHED_MOVIES, {});
+    let dirty = false;
+    for (const key in watched) {
+      if (watched[key].rating !== null && watched[key].rating !== undefined && watched[key].rating > 5) {
+        watched[key].rating = watched[key].rating / 2;
+        dirty = true;
+      }
+    }
+    if (dirty) await setData(STORAGE_KEYS.WATCHED_MOVIES, watched);
+
     return Object.values(watched).sort((a, b) =>
       new Date(b.watchedDate).getTime() - new Date(a.watchedDate).getTime()
     );
@@ -256,5 +296,48 @@ export const StorageProvider = {
 
   setTmdbApiKey: async (key: string) => {
     await AsyncStorage.setItem(STORAGE_KEYS.TMDB_API_KEY, key);
+  },
+
+  // --- Onboarding ---
+  hasCompletedOnboarding: async (): Promise<boolean> => {
+    try {
+      const value = await AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING_COMPLETE);
+      return value === 'true';
+    } catch {
+      return false;
+    }
+  },
+
+  completeOnboarding: async () => {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.ONBOARDING_COMPLETE, 'true');
+    } catch (e) {
+      console.error('Error saving onboarding flag', e);
+    }
+  },
+
+  // --- Discovery Caching (Offline) ---
+  getTrendingCache: async (): Promise<SearchResult[]> => {
+    return await getData<SearchResult[]>(STORAGE_KEYS.TRENDING_TV, []);
+  },
+
+  setTrendingCache: async (data: SearchResult[]) => {
+    await setData(STORAGE_KEYS.TRENDING_TV, data);
+  },
+
+  getTrendingMovieCache: async (): Promise<SearchResult[]> => {
+    return await getData<SearchResult[]>(STORAGE_KEYS.TRENDING_MOVIE, []);
+  },
+
+  setTrendingMovieCache: async (data: SearchResult[]) => {
+    await setData(STORAGE_KEYS.TRENDING_MOVIE, data);
+  },
+
+  getTopRatedMovieCache: async (): Promise<SearchResult[]> => {
+    return await getData<SearchResult[]>(STORAGE_KEYS.TOP_RATED_MOVIE, []);
+  },
+
+  setTopRatedMovieCache: async (data: SearchResult[]) => {
+    await setData(STORAGE_KEYS.TOP_RATED_MOVIE, data);
   },
 };

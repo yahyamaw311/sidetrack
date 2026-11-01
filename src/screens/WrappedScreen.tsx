@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity, useWindowDimensions,
     ActivityIndicator, Animated,
@@ -101,7 +101,7 @@ export const WrappedScreen: React.FC<WrappedScreenProps> = ({ year, onClose }) =
         );
     }
 
-    const cards = buildCards(stats, year, SCREEN_WIDTH);
+    const cards = useMemo(() => buildCards(stats, year, SCREEN_WIDTH), [stats, year, SCREEN_WIDTH]);
     const totalPages = cards.length;
 
     return (

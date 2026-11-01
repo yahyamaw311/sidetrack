@@ -190,7 +190,7 @@ export const WatchlistScreen: React.FC<WatchlistScreenProps> = ({ onSelectShow, 
           <FlatList
             data={filteredItems}
             renderItem={renderItem}
-            keyExtractor={(item) => item.itemId.toString()}
+            keyExtractor={(item) => `${item.itemType || 'tv'}_${item.itemId}`}
             contentContainerStyle={styles.list}
             showsVerticalScrollIndicator={false}
             refreshControl={

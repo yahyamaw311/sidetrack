@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useAppStore } from '../store/appStore';
@@ -7,22 +7,21 @@ import { CONFIG } from '../constants/config';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
-export const GDPRConsentModal = () => {
-  const { consentGiven, setConsentGiven, hydrated } = useAppStore();
-  const [visible, setVisible] = useState(false);
+const GRADIENT_START = { x: 0, y: 0 };
+const GRADIENT_END = { x: 1, y: 1 };
+
+export const GDPRConsentModal = React.memo(() => {
+  const consentGiven = useAppStore(s => s.consentGiven);
+  const setConsentGiven = useAppStore(s => s.setConsentGiven);
+  const hydrated = useAppStore(s => s.hydrated);
   const [accepting, setAccepting] = useState(false);
   
-  useEffect(() => {
-    if (hydrated && consentGiven === null) {
-      setVisible(true);
-    }
-  }, [hydrated, consentGiven]);
+  const visible = hydrated && consentGiven === null;
 
   const handleConsent = async () => {
     setAccepting(true);
     try {
       await setConsentGiven(true);
-      setVisible(false);
     } finally {
       setAccepting(false);
     }
@@ -36,8 +35,8 @@ export const GDPRConsentModal = () => {
         <View style={styles.container}>
           <LinearGradient
             colors={GRADIENTS.wrapped}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+            start={GRADIENT_START}
+            end={GRADIENT_END}
             style={styles.card}
           >
             <View style={styles.iconContainer}>
@@ -78,7 +77,7 @@ export const GDPRConsentModal = () => {
       </BlurView>
     </Modal>
   );
-};
+});
 
 const styles = StyleSheet.create({
   overlay: {

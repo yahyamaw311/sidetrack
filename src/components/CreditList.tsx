@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { View, Text, FlatList, StyleSheet } from 'react-native';
 import { COLORS, SPACING, BORDER_RADIUS, FONTS, LETTER_SPACING } from '../constants/theme';
 import { tmdbService } from '../services/tmdbService';
@@ -27,18 +27,21 @@ const CastCard = React.memo<{ person: CreditPerson; idx: number }>(({ person }) 
   </View>
 ));
 
-export const CreditList: React.FC<CreditListProps> = ({
+export const CreditList: React.FC<CreditListProps> = React.memo(({
   cast = [],
   crew = [],
   guestStars = [],
   title = 'CAST',
   horizontal = true
 }) => {
-  const director = crew.find((p) => p.job === 'Director');
-  const writers = crew.filter((p) => p.department === 'Writing' || p.job === 'Writer').slice(0, 2);
+  const director = useMemo(() => crew.find((p) => p.job === 'Director'), [crew]);
+  const writers = useMemo(
+    () => crew.filter((p) => p.department === 'Writing' || p.job === 'Writer').slice(0, 2),
+    [crew]
+  );
 
   // For episodes, guest stars are often prominent
-  const combinedCast = [...guestStars, ...cast].slice(0, 15);
+  const combinedCast = useMemo(() => [...guestStars, ...cast].slice(0, 15), [guestStars, cast]);
 
   if (combinedCast.length === 0 && !director && writers.length === 0) return null;
 
@@ -100,7 +103,7 @@ export const CreditList: React.FC<CreditListProps> = ({
       )}
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {

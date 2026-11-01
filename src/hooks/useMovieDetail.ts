@@ -11,6 +11,7 @@ export const useMovieDetail = (movieId: number) => {
   const queryClient = useQueryClient();
   
   const isMounted = useRef(true);
+  const isSubmitting = useRef(false);
   useEffect(() => {
     isMounted.current = true;
     return () => { isMounted.current = false; };
@@ -37,10 +38,13 @@ export const useMovieDetail = (movieId: number) => {
     () => watchlist.some(item => item.itemId === movieId && item.itemType === 'movie'),
     [watchlist, movieId]
   );
-  const existingEntry = useMemo(
-    () => watchedMovies.find(m => m.movieId === movieId) ?? null,
-    [watchedMovies, movieId]
-  );
+  const existingEntry = useMemo(() => {
+    const entries = watchedMovies.filter(m => m.movieId === movieId);
+    if (entries.length === 0) return null;
+    return entries.reduce((latest, current) =>
+      new Date(current.watchedDate).getTime() > new Date(latest.watchedDate).getTime() ? current : latest
+    , entries[0]);
+  }, [watchedMovies, movieId]);
   const isWatched = existingEntry !== null;
 
   // React Query Fetching
@@ -141,39 +145,51 @@ export const useMovieDetail = (movieId: number) => {
     noSpoilers: boolean;
     watchedDate: Date;
   }) => {
-    if (!movie) return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (!movie || isSubmitting.current) return;
+    isSubmitting.current = true;
+    try {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    const parsedTags = data.tags.trim() ? data.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined;
+      const parsedTags = data.tags.trim()
+        ? Array.from(new Set(data.tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean)))
+        : undefined;
 
-    const watchedMovie: WatchedMovie = {
-      movieId: movie.id,
-      title: movie.title,
-      posterPath: movie.poster_path,
-      backdropPath: movie.backdrop_path,
-      rating: data.rating,
-      watchedDate: data.watchedDate.toISOString(),
-      runtime: movie.runtime,
-      releaseDate: movie.release_date,
-      genres: movie.genres.map(g => g.name),
-      overview: movie.overview,
-      liked: data.liked,
-      review: data.review.trim() || undefined,
-      tags: parsedTags,
-      rewatch: data.rewatch,
-      noSpoilers: data.noSpoilers,
-    };
+      const watchedMovie: WatchedMovie = {
+        movieId: movie.id,
+        title: movie.title,
+        posterPath: movie.poster_path,
+        backdropPath: movie.backdrop_path,
+        rating: data.rating,
+        watchedDate: data.watchedDate.toISOString(),
+        runtime: movie.runtime,
+        releaseDate: movie.release_date,
+        genres: movie.genres.map(g => g.name),
+        overview: movie.overview,
+        liked: data.liked,
+        review: data.review.trim() || undefined,
+        tags: parsedTags,
+        rewatch: data.rewatch,
+        noSpoilers: data.noSpoilers,
+      };
 
-    if (existingEntry) {
-      await storeUpdateWatchedMovie(watchedMovie, existingEntry.watchedDate);
-    } else {
-      await storeAddWatchedMovie(watchedMovie);
+      if (existingEntry) {
+        await storeUpdateWatchedMovie(watchedMovie, existingEntry.watchedDate);
+      } else {
+        await storeAddWatchedMovie(watchedMovie);
+      }
+
+      // Auto-remove from watchlist if present
+      if (isInWatchlist) {
+        await storeRemoveFromWatchlist(movieId, 'movie');
+      }
+
+      setRatingModalVisible(false);
+      setSnackbar({
+        message: existingEntry ? `Updated ${movie.title}` : `Logged ${movie.title}`,
+      });
+    } finally {
+      isSubmitting.current = false;
     }
-
-    setRatingModalVisible(false);
-    setSnackbar({
-      message: existingEntry ? `Updated ${movie.title}` : `Logged ${movie.title}`,
-    });
   };
 
   const handleRefresh = useCallback(async () => {

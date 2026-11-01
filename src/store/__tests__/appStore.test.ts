@@ -25,6 +25,10 @@ jest.mock('../../services/StorageProvider', () => ({
   },
 }));
 
+jest.mock('../../contexts/ErrorNotifier', () => ({
+  notifyErrorGlobal: jest.fn(),
+}));
+
 import { useAppStore } from '../appStore';
 import { StorageProvider } from '../../services/StorageProvider';
 

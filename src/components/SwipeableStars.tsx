@@ -15,7 +15,7 @@ interface SwipeableStarsProps {
     onChange: (val: number) => void;
 }
 
-export const SwipeableStars: React.FC<SwipeableStarsProps> = ({ value, onChange }) => {
+export const SwipeableStars: React.FC<SwipeableStarsProps> = React.memo(({ value, onChange }) => {
     const containerRef = useRef<View>(null);
     const containerX = useRef(0);
     const lastHapticValue = useRef(0);
@@ -90,4 +90,4 @@ export const SwipeableStars: React.FC<SwipeableStarsProps> = ({ value, onChange 
             {[0, 1, 2, 3, 4].map(renderStar)}
         </View>
     );
-};
+});

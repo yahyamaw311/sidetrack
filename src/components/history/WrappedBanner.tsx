@@ -6,7 +6,10 @@ import { COLORS, GRADIENTS } from '../../constants/theme';
 import { CONFIG } from '../../constants/config';
 import { wrappedStyles } from '../../screens/HistoryScreen.styles';
 
-export const WrappedBanner: React.FC<{ onPress: () => void }> = ({ onPress }) => {
+const GRADIENT_START = { x: 0, y: 0 };
+const GRADIENT_END = { x: 1, y: 1 };
+
+export const WrappedBanner: React.FC<{ onPress: () => void }> = React.memo(({ onPress }) => {
   const shimmer = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -24,8 +27,8 @@ export const WrappedBanner: React.FC<{ onPress: () => void }> = ({ onPress }) =>
     <TouchableOpacity onPress={onPress} activeOpacity={CONFIG.LAYOUT.ACTIVE_OPACITY_CARD} style={wrappedStyles.bannerWrap}>
       <LinearGradient
         colors={GRADIENTS.wrappedBanner}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+        start={GRADIENT_START}
+        end={GRADIENT_END}
         style={wrappedStyles.bannerGradient}
       >
         <Animated.View style={[wrappedStyles.bannerContent, { opacity: shimmerOpacity }]}>
@@ -39,4 +42,4 @@ export const WrappedBanner: React.FC<{ onPress: () => void }> = ({ onPress }) =>
       </LinearGradient>
     </TouchableOpacity>
   );
-};
+});

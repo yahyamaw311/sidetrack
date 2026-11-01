@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { LayoutAnimation } from 'react-native';
 import { tmdbService } from '../services/tmdbService';
@@ -68,10 +68,13 @@ export const useDiscoveryData = () => {
     setRefreshing(false);
   }, [queryClient]);
 
-  // Triggers LayoutAnimation when data finishes loading initially
-  if (!loading) {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-  }
+  const prevLoading = useRef(loading);
+  useEffect(() => {
+    if (prevLoading.current && !loading) {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    }
+    prevLoading.current = loading;
+  }, [loading]);
 
   return {
     trending,

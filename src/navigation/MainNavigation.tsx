@@ -105,9 +105,9 @@ export const MainNavigation = () => {
         animateDetailOut();
       }
       if (tab === 'Explore') {
-        while (discoveryBackRef.current && discoveryBackRef.current()) {}
+        discoveryBackRef.current?.();
       } else if (tab === 'Log') {
-        while (historyBackRef.current && historyBackRef.current()) {}
+        historyBackRef.current?.();
       }
       return;
     }
@@ -413,6 +413,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.overlay.navBar,
     borderTopWidth: 1,
     borderTopColor: COLORS.borderLight,
+    zIndex: CONFIG.LAYOUT.OVERLAY_Z_INDEX + 10,
+    elevation: 20,
   },
   navInner: {
     flexDirection: 'row',

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TextInput,
   TouchableOpacity,
@@ -12,6 +12,7 @@ import { COLORS, FONTS, SPACING, BORDER_RADIUS, LETTER_SPACING, getRatingColor }
 import { CONFIG } from '../constants/config';
 import { tmdbService } from '../services/tmdbService';
 import { StorageProvider } from '../services/StorageProvider';
+import { useAppStore } from '../store/appStore';
 import { SearchResult, CurrentlyWatchingItem } from '../types';
 import { FadeImage } from '../components/FadeImage';
 import { DiscoverySkeleton } from '../components/discovery/DiscoverySkeletons';
@@ -28,11 +29,12 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
   const SPOTLIGHT_WIDTH = screenWidth * 0.75;
   const POSTER_WIDTH = (screenWidth - SPACING.m * 2 - SPACING.s * 2) / 3;
 
+  const currentlyWatching = useAppStore(s => s.currentlyWatching);
+
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [trending, setTrending] = useState<SearchResult[]>([]);
   const [trendingMovies, setTrendingMovies] = useState<SearchResult[]>([]);
-  const [currentlyWatching, setCurrentlyWatching] = useState<CurrentlyWatchingItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -63,16 +65,9 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
     return () => { onBackRef?.(null); };
   }, [searchActive, onBackRef]);
 
-  // Expose silent currently-watching refresh to parent
-  const refreshCW = useCallback(async () => {
-    setCurrentlyWatching(await StorageProvider.getCurrentlyWatching());
-  }, []);
-
-  const refreshCWRef = useRef(refreshCW);
-  refreshCWRef.current = refreshCW;
-
+  // Expose a no-op refresh to parent (currentlyWatching now comes from store)
   useEffect(() => {
-    if (refreshRef) refreshRef(() => { refreshCWRef.current(); });
+    if (refreshRef) refreshRef(() => {});
     return () => { refreshRef?.(null); };
   }, []);
 
@@ -86,7 +81,6 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
       ]);
       setTrending(tvData);
       setTrendingMovies(movieData);
-      setCurrentlyWatching(await StorageProvider.getCurrentlyWatching());
     } catch {
       setLoadError(true);
     } finally {
@@ -103,7 +97,6 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
       ]);
       setTrending(tvData);
       setTrendingMovies(movieData);
-      setCurrentlyWatching(await StorageProvider.getCurrentlyWatching());
     } catch {
       // silently fail on refresh — existing data remains
     } finally {
@@ -113,13 +106,17 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
 
   const performSearch = useCallback(async (text: string) => {
     if (text.length > 2) {
-      setLoading(true);
-      const searchData = await tmdbService.search(text);
-      // Filter out 'person' results â€" only show movies and TV shows
-      const filtered = searchData.results.filter((item: any) => item.media_type === 'movie' || item.media_type === 'tv');
-      setResults(filtered);
-      setLoading(false);
-      setSearching(false);
+      setSearching(true);
+      try {
+        const searchData = await tmdbService.search(text);
+        // Filter out 'person' results — only show movies and TV shows
+        const filtered = searchData.results.filter((item: any) => item.media_type === 'movie' || item.media_type === 'tv');
+        setResults(filtered);
+      } catch {
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
     } else if (text.length === 0) {
       setResults([]);
       setSearching(false);
@@ -482,7 +479,7 @@ export const DiscoveryScreen: React.FC<DiscoveryScreenProps> = ({ onSelectShow, 
             contentContainerStyle={styles.searchList}
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
-              loading || searching ? (
+              searching ? (
                 <PopcornLoader />
               ) : (
                 <View style={styles.centered}>

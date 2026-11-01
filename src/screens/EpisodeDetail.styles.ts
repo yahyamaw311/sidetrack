@@ -149,6 +149,16 @@ export const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: COLORS.text.muted,
   },
+  imdbRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  imdbText: {
+    color: COLORS.imdb,
+    fontFamily: FONTS.mono,
+    fontSize: 13,
+  },
   genreRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',

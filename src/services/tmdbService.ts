@@ -31,7 +31,8 @@ function sanitizeError(error: unknown): string {
 }
 
 const BASE_URL = Constants.expoConfig?.extra?.tmdbBaseUrl || 'https://api.themoviedb.org/3';
-const IMDB_GRAPHQL_URL = Constants.expoConfig?.extra?.imdbGraphqlUrl || 'https://graphql.imdb.com';
+const OMDB_API_URL = 'https://www.omdbapi.com/';
+const OMDB_API_KEY = Constants.expoConfig?.extra?.omdbApiKey || '';
 
 const tmdbClient = axios.create({
   baseURL: BASE_URL,
@@ -47,7 +48,11 @@ const tmdbClient = axios.create({
 
 // Interceptor to dynamically attach the BYOK API Key
 tmdbClient.interceptors.request.use(config => {
-  const tmdbApiKey = useAppStore.getState().tmdbApiKey || '';
+  const tmdbApiKey = useAppStore.getState().tmdbApiKey
+    || Constants.expoConfig?.extra?.tmdbApiKey
+    || process.env.EXPO_PUBLIC_TMDB_API_KEY
+    || process.env.TMDB_API_KEY
+    || '';
   const isBearerToken = tmdbApiKey.length > 50;
 
   if (isBearerToken) {
@@ -437,7 +442,7 @@ export const tmdbService = {
   },
 
   /**
-   * Get IMDb rating directly from IMDb's GraphQL API
+   * Get IMDb rating from OMDb using its IMDb title ID lookup
    */
   getIMDbRating: async (imdbId: string): Promise<{ imdbRating: string; imdbVotes: string } | null> => {
     if (!imdbId) return null;
@@ -445,29 +450,35 @@ export const tmdbService = {
     const cached = getCached<{ imdbRating: string; imdbVotes: string }>(cacheKey);
     if (cached) return cached;
     if (useAppStore.getState().isOffline) return null;
+    if (!OMDB_API_KEY) {
+      const message = 'IMDb ratings unavailable: OMDb API key is not configured';
+      console.error(message);
+      notifyErrorGlobal(message, 'api');
+      return null;
+    }
     try {
-      const response = await axios.post(IMDB_GRAPHQL_URL, {
-        query: `query GetImdbTitle($id: ID!) { title(id: $id) { ratingsSummary { aggregateRating voteCount } } }`,
-        variables: { id: imdbId },
-      }, {
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'Sidetrack/1.0',
+      const response = await axios.get(OMDB_API_URL, {
+        params: {
+          i: imdbId,
+          apikey: OMDB_API_KEY,
         },
         timeout: 10000,
       });
-      const data = response.data?.data?.title?.ratingsSummary;
-      if (data && data.aggregateRating) {
+      const data = response.data;
+      if (data.Response !== 'True') {
+        throw new Error(data.Error || 'OMDb did not return a rating');
+      }
+      if (data.imdbRating && data.imdbRating !== 'N/A') {
         const result = {
-          imdbRating: String(data.aggregateRating),
-          imdbVotes: data.voteCount ? data.voteCount.toLocaleString() : 'N/A',
+          imdbRating: data.imdbRating,
+          imdbVotes: data.imdbVotes || 'N/A',
         };
         setCache(cacheKey, result);
         return result;
       }
       return null;
     } catch (error) {
-      console.error('IMDb GraphQL Error:', sanitizeError(error));
+      console.error('OMDb IMDb Rating Error:', sanitizeError(error));
       notifyErrorGlobal('Could not fetch IMDb ratings', 'api');
       return null;
     }
@@ -552,6 +563,7 @@ export const tmdbService = {
     const cacheKey = `tv_trailer_${tvId}`;
     const cached = getCached<string>(cacheKey);
     if (cached) return cached;
+    if (useAppStore.getState().isOffline) return null;
     try {
       const data = await fetchWithDedup<{ results: Array<{ key: string; site: string; type: string; official: boolean }> }>(
         `/tv/${tvId}/videos`

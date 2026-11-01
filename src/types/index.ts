@@ -27,6 +27,7 @@ export interface TVShowDetail {
   backdrop_path: string | null;
   overview: string;
   first_air_date: string;
+  last_air_date?: string;
   vote_average: number;
   number_of_seasons: number;
   seasons: SeasonSummary[];

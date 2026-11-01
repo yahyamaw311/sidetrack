@@ -131,7 +131,7 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
           <>
             {/* Full-bleed backdrop */}
             <ImageBackground
-              source={tmdbService.getImageSource(episode?.still_path || show.backdrop_path || show.poster_path, 'w780')}
+              source={tmdbService.getImageSource(show.backdrop_path || show.poster_path || episode?.still_path || null, 'w780')}
               style={[styles.backdrop, { height: height * CONFIG.LAYOUT.BACKDROP_HEIGHT_RATIO_LOW }]}
             >
               <LinearGradient
@@ -149,11 +149,31 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
 
               {/* Meta line */}
               <View style={styles.metaRow}>
-                <Text style={styles.metaText}>{episode?.air_date || show.first_air_date?.split('-')[0]}</Text>
+                <Text style={styles.metaText}>
+                  {show.first_air_date ? show.first_air_date.split('-')[0] : ''}
+                  {show.status === 'Ended' && show.last_air_date ? `–${show.last_air_date.split('-')[0]}` : show.first_air_date ? '–Present' : ''}
+                </Text>
+                {show.number_of_seasons ? (
+                  <>
+                    <View style={styles.metaDot} />
+                    <Text style={styles.metaText}>
+                      {show.number_of_seasons} {show.number_of_seasons === 1 ? 'Season' : 'Seasons'}
+                    </Text>
+                  </>
+                ) : null}
                 {formatRuntime(episode?.runtime) && (
                   <>
                     <View style={styles.metaDot} />
                     <Text style={styles.metaText}>{formatRuntime(episode!.runtime)}</Text>
+                  </>
+                )}
+                {showImdbRating && (
+                  <>
+                    <View style={styles.metaDot} />
+                    <View style={styles.imdbRow}>
+                      <Ionicons name="star" size={12} color={COLORS.imdb} />
+                      <Text style={styles.imdbText}>{showImdbRating}</Text>
+                    </View>
                   </>
                 )}
               </View>
@@ -207,9 +227,9 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
 
               {/* Overview */}
               <View style={styles.section}>
-                <Text style={styles.sectionLabel}>ABOUT</Text>
-                <Text style={styles.overview} numberOfLines={overviewExpanded ? undefined : 4}>{episode?.overview || show.overview || 'No overview available.'}</Text>
-                {(episode?.overview || show.overview || '').length > 200 && (
+                <Text style={styles.sectionLabel}>OVERVIEW</Text>
+                <Text style={styles.overview} numberOfLines={overviewExpanded ? undefined : 4}>{show.overview || episode?.overview || 'No overview available.'}</Text>
+                {(show.overview || episode?.overview || '').length > 200 && (
                   <TouchableOpacity onPress={() => setOverviewExpanded(!overviewExpanded)} activeOpacity={0.7}>
                     <Text style={styles.readMore}>{overviewExpanded ? 'Read less' : 'Read more'}</Text>
                   </TouchableOpacity>
@@ -217,16 +237,16 @@ export const EpisodeDetail: React.FC<EpisodeDetailProps> = ({ route, onBack }) =
               </View>
 
               {/* Credits */}
-              {episode?.credits ? (
+              {show.credits ? (
+                <CreditList 
+                  cast={show.credits.cast} 
+                  crew={show.credits.crew}
+                />
+              ) : episode?.credits ? (
                 <CreditList 
                   cast={episode.credits.cast} 
                   crew={episode.credits.crew} 
                   guestStars={episode.guest_stars}
-                />
-              ) : show.credits ? (
-                <CreditList 
-                  cast={show.credits.cast} 
-                  crew={show.credits.crew}
                 />
               ) : null}
 

@@ -11,6 +11,7 @@ import { SnackbarConfig } from '../components/Snackbar';
 export const useEpisodeDetail = (tvId: number, initialSeason?: number, initialEpisode?: number) => {
   const queryClient = useQueryClient();
   const isMounted = useRef(true);
+  const isSubmitting = useRef(false);
   useEffect(() => {
     isMounted.current = true;
     return () => { isMounted.current = false; };
@@ -174,68 +175,81 @@ export const useEpisodeDetail = (tvId: number, initialSeason?: number, initialEp
     rating: number | null; liked: boolean; review: string; tags: string;
     rewatch: boolean; noSpoilers: boolean; watchedDate: Date;
   }) => {
-    if (!watchedEpisode || !show) return;
+    if (!watchedEpisode || !show || isSubmitting.current) return;
+    isSubmitting.current = true;
 
-    const entry: WatchedEpisode = {
-      episodeId: watchedEpisode.id,
-      seriesId: tvId,
-      seriesName: show.name,
-      episodeName: watchedEpisode.name,
-      stillPath: watchedEpisode.still_path,
-      seasonNumber: watchedEpisode.season_number,
-      episodeNumber: watchedEpisode.episode_number,
-      rating: data.rating,
-      watchedDate: data.watchedDate.toISOString(),
-      liked: data.liked,
-      review: data.review.trim() || undefined,
-      tags: data.tags.trim() ? data.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
-      rewatch: data.rewatch,
-      noSpoilers: data.noSpoilers,
-      runtime: watchedEpisode.runtime,
-      genres: show.genres?.map((g: any) => g.name),
-    };
+    try {
+      const parsedTags = data.tags.trim()
+        ? Array.from(new Set(data.tags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean)))
+        : undefined;
 
-    await storeMarkEpisodeWatched(entry);
-    if (!isMounted.current) return;
+      const entry: WatchedEpisode = {
+        episodeId: watchedEpisode.id,
+        seriesId: tvId,
+        seriesName: show.name,
+        episodeName: watchedEpisode.name,
+        stillPath: watchedEpisode.still_path,
+        seasonNumber: watchedEpisode.season_number,
+        episodeNumber: watchedEpisode.episode_number,
+        rating: data.rating,
+        watchedDate: data.watchedDate.toISOString(),
+        liked: data.liked,
+        review: data.review.trim() || undefined,
+        tags: parsedTags,
+        rewatch: data.rewatch,
+        noSpoilers: data.noSpoilers,
+        runtime: watchedEpisode.runtime,
+        genres: show.genres?.map((g: any) => g.name),
+      };
 
-    // Auto-add to Currently Watching
-    await storeAddToCurrentlyWatching({
-      seriesId: tvId,
-      name: show?.name || '',
-      posterPath: show?.poster_path || null,
-      lastUpdated: new Date().toISOString(),
-    });
-    if (!isMounted.current) return;
-
-    // Check if this was the last episode of the last season → auto-remove if fully watched
-    const realSeasons = show.seasons.filter((s: any) => s.season_number > 0);
-    const lastSeason = realSeasons[realSeasons.length - 1];
-    if (
-      lastSeason &&
-      watchedEpisode.season_number === lastSeason.season_number &&
-      watchedEpisode.episode_number === lastSeason.episode_count
-    ) {
-      const seasonMap: Record<number, number> = {};
-      for (const s of realSeasons) {
-        seasonMap[s.season_number] = s.episode_count;
-      }
-      const fullyWatched = await StorageProvider.isShowFullyWatched(tvId, seasonMap);
+      await storeMarkEpisodeWatched(entry);
       if (!isMounted.current) return;
-      if (fullyWatched) {
-        await storeRemoveFromCurrentlyWatching(tvId);
-      }
-    }
 
-    if (!isMounted.current) return;
-    const isEdit = !!editInitialData;
-    setWatchedModalVisible(false);
-    setWatchedEpisode(null);
-    setEditInitialData(null);
-    setSnackbar({
-      message: isEdit
-        ? `Updated S${entry.seasonNumber}E${entry.episodeNumber}`
-        : `Logged S${entry.seasonNumber}E${entry.episodeNumber}`,
-    });
+      // Auto-add to Currently Watching
+      await storeAddToCurrentlyWatching({
+        seriesId: tvId,
+        name: show?.name || '',
+        posterPath: show?.poster_path || null,
+        lastUpdated: new Date().toISOString(),
+      });
+      if (!isMounted.current) return;
+
+      // Check if this was the last episode of the last season → auto-remove if fully watched
+      const realSeasons = show.seasons.filter((s: any) => s.season_number > 0);
+      const lastSeason = realSeasons[realSeasons.length - 1];
+      if (
+        lastSeason &&
+        watchedEpisode.season_number === lastSeason.season_number &&
+        watchedEpisode.episode_number === lastSeason.episode_count
+      ) {
+        const seasonMap: Record<number, number> = {};
+        for (const s of realSeasons) {
+          seasonMap[s.season_number] = s.episode_count;
+        }
+        const fullyWatched = await StorageProvider.isShowFullyWatched(tvId, seasonMap);
+        if (!isMounted.current) return;
+        if (fullyWatched) {
+          await storeRemoveFromCurrentlyWatching(tvId);
+          // Auto-remove from watchlist if present
+          if (isInWatchlist) {
+            await storeRemoveFromWatchlist(tvId, 'tv');
+          }
+        }
+      }
+
+      if (!isMounted.current) return;
+      const isEdit = !!editInitialData;
+      setWatchedModalVisible(false);
+      setWatchedEpisode(null);
+      setEditInitialData(null);
+      setSnackbar({
+        message: isEdit
+          ? `Updated S${entry.seasonNumber}E${entry.episodeNumber}`
+          : `Logged S${entry.seasonNumber}E${entry.episodeNumber}`,
+      });
+    } finally {
+      isSubmitting.current = false;
+    }
   };
 
   const selectEpisode = async (ep: Episode) => {
@@ -269,9 +283,21 @@ export const useEpisodeDetail = (tvId: number, initialSeason?: number, initialEp
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await queryClient.refetchQueries({ queryKey: ['tv', tvId] });
+    await Promise.all([
+      queryClient.refetchQueries({ queryKey: ['tv', tvId] }),
+      selectedSeason !== undefined && selectedEpisode !== undefined
+        ? queryClient.refetchQueries({ queryKey: ['tv', tvId, 'season', selectedSeason, 'episode', selectedEpisode] })
+        : Promise.resolve(),
+      selectedSeason !== undefined && selectedEpisode !== undefined
+        ? queryClient.refetchQueries({ queryKey: ['tv_ep_imdb', tvId, selectedSeason, selectedEpisode] })
+        : Promise.resolve(),
+      queryClient.refetchQueries({ queryKey: ['trailer', 'tv', tvId] }),
+      show?.external_ids?.imdb_id
+        ? queryClient.refetchQueries({ queryKey: ['imdb', show.external_ids.imdb_id] })
+        : Promise.resolve(),
+    ]);
     setRefreshing(false);
-  }, [queryClient, tvId]);
+  }, [queryClient, tvId, selectedSeason, selectedEpisode, show?.external_ids?.imdb_id]);
 
   return {
     episode,

@@ -279,7 +279,7 @@ export const StatsService = {
                 genreCountMap[g] = (genreCountMap[g] || 0) + 1;
                 if (m.rating !== null) {
                     if (!genreRatingMap[g]) genreRatingMap[g] = [];
-                    genreRatingMap[g].push((m.rating as number) / 2); // normalize to 5-star
+                    genreRatingMap[g].push(normalizeMovieRating(m.rating as number));
                 }
             });
         });
@@ -389,15 +389,21 @@ export const StatsService = {
         const rewatchCount = Object.values(movieIdCounts).filter(c => c > 1).reduce((sum, c) => sum + c - 1, 0);
 
         // ── Social / engagement ──
-        const totalLikes = episodes.filter(e => e.liked).length;
+        const totalLikes = movies.filter(m => m.liked).length + episodes.filter(e => e.liked).length;
         const totalEntries = totalMovies + totalEpisodes;
         const likeRatio = totalEntries > 0 ? Math.round((totalLikes / totalEntries) * 100) : 0;
 
-        const allReviews = episodes.filter(e => e.review && e.review.trim().length > 0);
+        const allReviews = [
+            ...movies.filter(m => m.review && m.review.trim().length > 0),
+            ...episodes.filter(e => e.review && e.review.trim().length > 0),
+        ];
         const totalReviews = allReviews.length;
-        const avgReviewLength = totalReviews > 0 ? Math.round(allReviews.reduce((s, e) => s + (e.review?.length || 0), 0) / totalReviews) : 0;
+        const avgReviewLength = totalReviews > 0 ? Math.round(allReviews.reduce((s, e) => s + ((e as any).review?.length || 0), 0) / totalReviews) : 0;
 
         const tagCountMap: Record<string, number> = {};
+        movies.forEach(m => {
+            (m.tags || []).forEach(t => { tagCountMap[t] = (tagCountMap[t] || 0) + 1; });
+        });
         episodes.forEach(e => {
             (e.tags || []).forEach(t => { tagCountMap[t] = (tagCountMap[t] || 0) + 1; });
         });

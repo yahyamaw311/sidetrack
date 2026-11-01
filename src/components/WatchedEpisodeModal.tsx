@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -75,7 +75,7 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
             setNoSpoilers(false);
             setWatchedDate(new Date());
         }
-    }, [visible]);
+    }, [visible, initialData]);
 
     const handleConfirm = async () => {
         if (submitting) return;
@@ -84,17 +84,17 @@ export const WatchedEpisodeModal: React.FC<WatchedEpisodeModalProps> = ({
         const clampedDate = watchedDate > new Date() ? new Date() : watchedDate;
         try {
             await onConfirm({ rating, liked, review: review.trim(), tags: cleanTags, rewatch, noSpoilers, watchedDate: clampedDate });
+            // Reset state only on success
+            setRating(null);
+            setLiked(false);
+            setReview('');
+            setTags('');
+            setRewatch(false);
+            setNoSpoilers(false);
+            setWatchedDate(new Date());
         } finally {
             setSubmitting(false);
         }
-        // Reset state
-        setRating(null);
-        setLiked(false);
-        setReview('');
-        setTags('');
-        setRewatch(false);
-        setNoSpoilers(false);
-        setWatchedDate(new Date());
     };
 
     const handleClose = () => {

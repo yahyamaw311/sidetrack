@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState } from 'react';
+import React, { Suspense, lazy, useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ImageBackground, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -48,6 +48,10 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
     handleConfirmLog,
   } = useMovieDetail(movieId);
   const [overviewExpanded, setOverviewExpanded] = useState(false);
+
+  const handlePlayerStateChange = useCallback((state: string) => {
+    if (state === 'ended') setTrailerPlaying(false);
+  }, [setTrailerPlaying]);
 
   const formatRuntime = (mins: number) => {
     const h = Math.floor(mins / 60);
@@ -231,9 +235,7 @@ export const MovieDetail: React.FC<MovieDetailProps> = ({ route, onBack }) => {
                       play={true}
                       videoId={trailerKey}
                       webViewProps={{ allowsInlineMediaPlayback: true }}
-                      onChangeState={(state: string) => {
-                        if (state === 'ended') setTrailerPlaying(false);
-                      }}
+                      onChangeState={handlePlayerStateChange}
                     />
                   </Suspense>
                 </View>
